@@ -1,102 +1,81 @@
 @import 'tailwindcss';
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@source "./resources/**/*.tsx";
+@source "./resources/**/*.ts";
+@source "./resources/**/*.js";
+@source "./resources/**/*.blade.php";
 
-@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
-@source '../../storage/framework/views/*.php';
-@source '../**/*.blade.php';
-@source '../**/*.js';
+@theme {
+  --background: 0 0% 100%;
+  --foreground: 213 84% 11%;
 
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 213 84% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 213 84% 11%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 213 84% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 213 84% 11%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 213 84% 11%;
+  --primary: 200 98% 39%;
+  --primary-foreground: 0 0% 100%;
 
-    --primary: 200 98% 39%;
-    --primary-foreground: 0 0% 100%;
+  --secondary: 197 71% 73%;
+  --secondary-foreground: 213 84% 11%;
 
-    --secondary: 197 71% 73%;
-    --secondary-foreground: 213 84% 11%;
+  --muted: 197 71% 95%;
+  --muted-foreground: 213 20% 45%;
 
-    --muted: 197 71% 95%;
-    --muted-foreground: 213 20% 45%;
+  --accent: 160 84% 39%;
+  --accent-foreground: 0 0% 100%;
 
-    --accent: 160 84% 39%;
-    --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
+  --border: 197 71% 90%;
+  --input: 197 71% 90%;
+  --ring: 200 98% 39%;
 
-    --border: 197 71% 90%;
-    --input: 197 71% 90%;
-    --ring: 200 98% 39%;
+  --radius: 0.5rem;
 
-    --radius: 0.5rem;
+  --sidebar-background: 0 0% 98%;
+  --sidebar-foreground: 240 5.3% 26.1%;
+  --sidebar-primary: 240 5.9% 10%;
+  --sidebar-primary-foreground: 0 0% 98%;
+  --sidebar-accent: 240 4.8% 95.9%;
+  --sidebar-accent-foreground: 240 5.9% 10%;
+  --sidebar-border: 220 13% 91%;
+  --sidebar-ring: 217.2 91.2% 59.8%;
 
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
+  --waterbase-50: 197 71% 95%;
+  --waterbase-100: 197 71% 88%;
+  --waterbase-200: 197 71% 80%;
+  --waterbase-300: 197 71% 73%;
+  --waterbase-400: 197 71% 65%;
+  --waterbase-500: 200 98% 39%;
+  --waterbase-600: 200 98% 35%;
+  --waterbase-700: 200 98% 35%;
+  --waterbase-800: 200 98% 27%;
+  --waterbase-900: 200 98% 23%;
+  --waterbase-950: 213 84% 11%;
 
-  .dark {
-    --background: 213 84% 5%;
-    --foreground: 0 0% 98%;
+  --enviro-50: 160 84% 95%;
+  --enviro-100: 160 84% 88%;
+  --enviro-200: 160 84% 80%;
+  --enviro-300: 160 84% 73%;
+  --enviro-400: 160 84% 65%;
+  --enviro-500: 160 84% 39%;
+  --enviro-600: 160 84% 35%;
+  --enviro-700: 160 84% 31%;
+  --enviro-800: 160 84% 27%;
+  --enviro-900: 160 84% 23%;
+}
 
-    --card: 213 84% 5%;
-    --card-foreground: 0 0% 98%;
+* {
+  border-color: hsl(var(--border));
+}
 
-    --popover: 213 84% 5%;
-    --popover-foreground: 0 0% 98%;
-
-    --primary: 197 71% 73%;
-    --primary-foreground: 213 84% 11%;
-
-    --secondary: 213 32% 18%;
-    --secondary-foreground: 0 0% 98%;
-
-    --muted: 213 32% 18%;
-    --muted-foreground: 213 20% 65%;
-
-    --accent: 160 84% 39%;
-    --accent-foreground: 0 0% 100%;
-
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 0 0% 98%;
-
-    --border: 213 32% 18%;
-    --input: 213 32% 18%;
-    --ring: 197 71% 73%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
-
-  * {
-    border-color: hsl(var(--border));
-  }
-
-  body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
-  }
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
 }
 
 
@@ -144,4 +123,388 @@
 
 .read-the-docs {
   color: #888;
+}
+/* text */
+.text-waterbase-50 {
+  color: hsl(var(--waterbase-50));
+}
+.text-waterbase-100 {
+  color: hsl(var(--waterbase-100));
+}
+.text-waterbase-200 {
+  color: hsl(var(--waterbase-200));
+}
+.text-waterbase-300 {
+  color: hsl(var(--waterbase-300));
+}
+.text-waterbase-400 {
+  color: hsl(var(--waterbase-400));
+}
+.text-waterbase-500 {
+  color: hsl(var(--waterbase-500));
+}
+.text-waterbase-600 {
+  color: hsl(var(--waterbase-600));
+}
+.text-waterbase-700 {
+  color: hsl(var(--waterbase-700));
+}
+.text-waterbase-800 {
+  color: hsl(var(--waterbase-800));
+}
+.text-waterbase-900 {
+  color: hsl(var(--waterbase-900));
+}
+.text-waterbase-950 {
+  color: hsl(var(--waterbase-950));
+}
+.text-enviro-50 {
+  color: hsl(var(--enviro-50));
+}
+.text-enviro-100 {
+  color: hsl(var(--enviro-100));
+}
+.text-enviro-200 {
+  color: hsl(var(--enviro-200));
+}
+.text-enviro-300 {
+  color: hsl(var(--enviro-300));
+}
+.text-enviro-400 {
+  color: hsl(var(--enviro-400));
+}
+.text-enviro-500 {
+  color: hsl(var(--enviro-500));
+}
+.text-enviro-600 {
+  color: hsl(var(--enviro-600));
+}
+.text-enviro-700 {
+  color: hsl(var(--enviro-700));
+}
+.text-enviro-800 {
+  color: hsl(var(--enviro-800));
+}
+.text-enviro-900 {
+  color: hsl(var(--enviro-900));
+}
+/* Border */
+.border-waterbase-50 {
+  color: hsl(var(--waterbase-50));
+}
+.border-waterbase-100 {
+  color: hsl(var(--waterbase-100));
+}
+.border-waterbase-200 {
+  color: hsl(var(--waterbase-200));
+}
+.border-waterbase-300 {
+  color: hsl(var(--waterbase-300));
+}
+.border-waterbase-400 {
+  color: hsl(var(--waterbase-400));
+}
+.border-waterbase-500 {
+  color: hsl(var(--waterbase-500));
+}
+.border-waterbase-600 {
+  color: hsl(var(--waterbase-600));
+}
+.border-waterbase-700 {
+  color: hsl(var(--waterbase-700));
+}
+.border-waterbase-800 {
+  color: hsl(var(--waterbase-800));
+}
+.border-waterbase-900 {
+  color: hsl(var(--waterbase-900));
+}
+.border-waterbase-950 {
+  color: hsl(var(--waterbase-950));
+}
+.border-enviro-50 {
+  color: hsl(var(--enviro-50));
+}
+.border-enviro-100 {
+  color: hsl(var(--enviro-100));
+}
+.border-enviro-200 {
+  color: hsl(var(--enviro-200));
+}
+.border-enviro-300 {
+  color: hsl(var(--enviro-300));
+}
+.border-enviro-400 {
+  color: hsl(var(--enviro-400));
+}
+.border-enviro-500 {
+  color: hsl(var(--enviro-500));
+}
+.border-enviro-600 {
+  color: hsl(var(--enviro-600));
+}
+.border-enviro-700 {
+  color: hsl(var(--enviro-700));
+}
+.border-enviro-800 {
+  color: hsl(var(--enviro-800));
+}
+.border-enviro-900 {
+  color: hsl(var(--enviro-900));
+}
+/* Ring */
+.ring-waterbase-50 {
+  color: hsl(var(--waterbase-50));
+}
+.ring-waterbase-100 {
+  color: hsl(var(--waterbase-100));
+}
+.ring-waterbase-200 {
+  color: hsl(var(--waterbase-200));
+}
+.ring-waterbase-300 {
+  color: hsl(var(--waterbase-300));
+}
+.ring-waterbase-400 {
+  color: hsl(var(--waterbase-400));
+}
+.ring-waterbase-500 {
+  color: hsl(var(--waterbase-500));
+}
+.ring-waterbase-600 {
+  color: hsl(var(--waterbase-600));
+}
+.ring-waterbase-700 {
+  color: hsl(var(--waterbase-700));
+}
+.ring-waterbase-800 {
+  color: hsl(var(--waterbase-800));
+}
+.ring-waterbase-900 {
+  color: hsl(var(--waterbase-900));
+}
+.ring-waterbase-950 {
+  color: hsl(var(--waterbase-950));
+}
+.ring-enviro-50 {
+  color: hsl(var(--enviro-50));
+}
+.ring-enviro-100 {
+  color: hsl(var(--enviro-100));
+}
+.ring-enviro-200 {
+  color: hsl(var(--enviro-200));
+}
+.ring-enviro-300 {
+  color: hsl(var(--enviro-300));
+}
+.ring-enviro-400 {
+  color: hsl(var(--enviro-400));
+}
+.ring-enviro-500 {
+  color: hsl(var(--enviro-500));
+}
+.ring-enviro-600 {
+  color: hsl(var(--enviro-600));
+}
+.ring-enviro-700 {
+  color: hsl(var(--enviro-700));
+}
+.ring-enviro-800 {
+  color: hsl(var(--enviro-800));
+}
+.ring-enviro-900 {
+  color: hsl(var(--enviro-900));
+}
+/* BG */
+.bg-waterbase-50 {
+  color: hsl(var(--waterbase-50));
+}
+.bg-waterbase-100 {
+  color: hsl(var(--waterbase-100));
+}
+.bg-waterbase-200 {
+  color: hsl(var(--waterbase-200));
+}
+.bg-waterbase-300 {
+  color: hsl(var(--waterbase-300));
+}
+.bg-waterbase-400 {
+  color: hsl(var(--waterbase-400));
+}
+.bg-waterbase-500 {
+  color: hsl(var(--waterbase-500));
+}
+.bg-waterbase-600 {
+  color: hsl(var(--waterbase-600));
+}
+.bg-waterbase-700 {
+  color: hsl(var(--waterbase-700));
+}
+.bg-waterbase-800 {
+  color: hsl(var(--waterbase-800));
+}
+.bg-waterbase-900 {
+  color: hsl(var(--waterbase-900));
+}
+.bg-waterbase-950 {
+  color: hsl(var(--waterbase-950));
+}
+.bg-enviro-50 {
+  color: hsl(var(--enviro-50));
+}
+.bg-enviro-100 {
+  color: hsl(var(--enviro-100));
+}
+.bg-enviro-200 {
+  color: hsl(var(--enviro-200));
+}
+.bg-enviro-300 {
+  color: hsl(var(--enviro-300));
+}
+.bg-enviro-400 {
+  color: hsl(var(--enviro-400));
+}
+.bg-enviro-500 {
+  color: hsl(var(--enviro-500));
+}
+.bg-enviro-600 {
+  color: hsl(var(--enviro-600));
+}
+.bg-enviro-700 {
+  color: hsl(var(--enviro-700));
+}
+.bg-enviro-800 {
+  color: hsl(var(--enviro-800));
+}
+.bg-enviro-900 {
+  color: hsl(var(--enviro-900));
+}
+/* from */
+.from-waterbase-50 {
+  color: hsl(var(--waterbase-50));
+}
+.from-waterbase-100 {
+  color: hsl(var(--waterbase-100));
+}
+.from-waterbase-200 {
+  color: hsl(var(--waterbase-200));
+}
+.from-waterbase-300 {
+  color: hsl(var(--waterbase-300));
+}
+.from-waterbase-400 {
+  color: hsl(var(--waterbase-400));
+}
+.from-waterbase-500 {
+  color: hsl(var(--waterbase-500));
+}
+.from-waterbase-600 {
+  color: hsl(var(--waterbase-600));
+}
+.from-waterbase-700 {
+  color: hsl(var(--waterbase-700));
+}
+.from-waterbase-800 {
+  color: hsl(var(--waterbase-800));
+}
+.from-waterbase-900 {
+  color: hsl(var(--waterbase-900));
+}
+.from-waterbase-950 {
+  color: hsl(var(--waterbase-950));
+}
+.from-enviro-50 {
+  color: hsl(var(--enviro-50));
+}
+.from-enviro-100 {
+  color: hsl(var(--enviro-100));
+}
+.from-enviro-200 {
+  color: hsl(var(--enviro-200));
+}
+.from-enviro-300 {
+  color: hsl(var(--enviro-300));
+}
+.from-enviro-400 {
+  color: hsl(var(--enviro-400));
+}
+.from-enviro-500 {
+  color: hsl(var(--enviro-500));
+}
+.from-enviro-600 {
+  color: hsl(var(--enviro-600));
+}
+.from-enviro-700 {
+  color: hsl(var(--enviro-700));
+}
+.from-enviro-800 {
+  color: hsl(var(--enviro-800));
+}
+.from-enviro-900 {
+  color: hsl(var(--enviro-900));
+}
+/* to */
+.to-waterbase-50 {
+  color: hsl(var(--waterbase-50));
+}
+.to-waterbase-100 {
+  color: hsl(var(--waterbase-100));
+}
+.to-waterbase-200 {
+  color: hsl(var(--waterbase-200));
+}
+.to-waterbase-300 {
+  color: hsl(var(--waterbase-300));
+}
+.to-waterbase-400 {
+  color: hsl(var(--waterbase-400));
+}
+.to-waterbase-500 {
+  color: hsl(var(--waterbase-500));
+}
+.to-waterbase-600 {
+  color: hsl(var(--waterbase-600));
+}
+.to-waterbase-700 {
+  color: hsl(var(--waterbase-700));
+}
+.to-waterbase-800 {
+  color: hsl(var(--waterbase-800));
+}
+.to-waterbase-900 {
+  color: hsl(var(--waterbase-900));
+}
+.to-waterbase-950 {
+  color: hsl(var(--waterbase-950));
+}
+.to-enviro-50 {
+  color: hsl(var(--enviro-50));
+}
+.to-enviro-100 {
+  color: hsl(var(--enviro-100));
+}
+.to-enviro-200 {
+  color: hsl(var(--enviro-200));
+}
+.to-enviro-300 {
+  color: hsl(var(--enviro-300));
+}
+.to-enviro-400 {
+  color: hsl(var(--enviro-400));
+}
+.to-enviro-500 {
+  color: hsl(var(--enviro-500));
+}
+.to-enviro-600 {
+  color: hsl(var(--enviro-600));
+}
+.to-enviro-700 {
+  color: hsl(var(--enviro-700));
+}
+.to-enviro-800 {
+  color: hsl(var(--enviro-800));
+}
+.to-enviro-900 {
+  color: hsl(var(--enviro-900));
 }
