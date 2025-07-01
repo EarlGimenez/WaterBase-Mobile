@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { MapPin, Home, Upload, Users, BarChart3, Menu, X } from "lucide-react";
+import { MapPin, Home, Upload, User, Users, BarChart3, Menu, X } from "lucide-react";
 import { useState } from "react";
 
 const Navigation = () => {
@@ -14,6 +14,7 @@ const Navigation = () => {
     { href: "/report", label: "Report Pollution", icon: Upload },
     { href: "/community", label: "Community", icon: Users },
     { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
+    { href: "/profile", label: "Profile", icon: User },
   ];
 
   return (
