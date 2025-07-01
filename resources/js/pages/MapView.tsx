@@ -9,7 +9,6 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -17,15 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Navigation from "@/components/Navigation";
 import {
   MapPin,
@@ -39,9 +29,7 @@ import {
   User,
   X,
   Plus,
-  Zap,
   BarChart3,
-  TrendingUp,
   Eye,
   Target,
 } from "lucide-react";
@@ -143,18 +131,7 @@ const MapView = () => {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [filteredReports, setFilteredReports] = useState(mockReports);
-  const [showReportForm, setShowReportForm] = useState(false);
   const [viewMode, setViewMode] = useState<"standard" | "priority">("standard");
-
-  // Form state
-  const [newReport, setNewReport] = useState({
-    title: "",
-    description: "",
-    address: "",
-    latitude: "",
-    longitude: "",
-    type: "",
-  });
 
   useEffect(() => {
     let filtered = mockReports;
@@ -229,25 +206,6 @@ const MapView = () => {
     }
   };
 
-  const handleSubmitReport = () => {
-    // This would normally submit to backend
-    console.log("Submitting report:", newReport);
-    setShowReportForm(false);
-    setNewReport({
-      title: "",
-      description: "",
-      address: "",
-      latitude: "",
-      longitude: "",
-      type: "",
-    });
-  };
-
-  const handleAIGenerate = () => {
-    // Non-functional for now as requested
-    console.log("AI Generate Report - Coming Soon");
-  };
-
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation />
@@ -285,152 +243,12 @@ const MapView = () => {
 
             {/* Action Buttons */}
             <div className="grid grid-cols-1 gap-2 mb-4">
-              <Dialog open={showReportForm} onOpenChange={setShowReportForm}>
-                <DialogTrigger asChild>
-                  <Button className="w-full bg-waterbase-500 hover:bg-waterbase-600">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Submit New Report
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Report Water Pollution</DialogTitle>
-                    <DialogDescription>
-                      Submit a detailed pollution report for your area
-                    </DialogDescription>
-                  </DialogHeader>
-
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-sm font-medium mb-1 block">
-                        Title
-                      </label>
-                      <Input
-                        placeholder="Brief description of the pollution"
-                        value={newReport.title}
-                        onChange={(e) =>
-                          setNewReport({ ...newReport, title: e.target.value })
-                        }
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-sm font-medium mb-1 block">
-                        Content
-                      </label>
-                      <Textarea
-                        placeholder="Detailed description of what you observed..."
-                        value={newReport.description}
-                        onChange={(e) =>
-                          setNewReport({
-                            ...newReport,
-                            description: e.target.value,
-                          })
-                        }
-                        rows={3}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-sm font-medium mb-1 block">
-                        Address
-                      </label>
-                      <Input
-                        placeholder="Full address of the location"
-                        value={newReport.address}
-                        onChange={(e) =>
-                          setNewReport({
-                            ...newReport,
-                            address: e.target.value,
-                          })
-                        }
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-sm font-medium mb-1 block">
-                          Latitude
-                        </label>
-                        <Input
-                          placeholder="14.5995"
-                          value={newReport.latitude}
-                          onChange={(e) =>
-                            setNewReport({
-                              ...newReport,
-                              latitude: e.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium mb-1 block">
-                          Longitude
-                        </label>
-                        <Input
-                          placeholder="121.0008"
-                          value={newReport.longitude}
-                          onChange={(e) =>
-                            setNewReport({
-                              ...newReport,
-                              longitude: e.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-sm font-medium mb-1 block">
-                        Pollution Type
-                      </label>
-                      <Select
-                        value={newReport.type}
-                        onValueChange={(value) =>
-                          setNewReport({ ...newReport, type: value })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select pollution type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="industrial">
-                            Industrial Waste
-                          </SelectItem>
-                          <SelectItem value="plastic">
-                            Plastic Pollution
-                          </SelectItem>
-                          <SelectItem value="sewage">
-                            Sewage Discharge
-                          </SelectItem>
-                          <SelectItem value="chemical">
-                            Chemical Pollution
-                          </SelectItem>
-                          <SelectItem value="oil">Oil Spill</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="flex space-x-2">
-                      <Button
-                        onClick={handleSubmitReport}
-                        className="flex-1 bg-waterbase-500 hover:bg-waterbase-600"
-                      >
-                        Submit Report
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={handleAIGenerate}
-                        className="flex-1 border-enviro-300 text-enviro-700 hover:bg-enviro-50"
-                      >
-                        <Zap className="w-4 h-4 mr-1" />
-                        AI Generate
-                      </Button>
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
-
+              <Link to="/report">
+                <Button className="w-full bg-waterbase-500 hover:bg-waterbase-600">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Submit New Report
+                </Button>
+              </Link>
               <Link to="/research-map">
                 <Button
                   variant="outline"
