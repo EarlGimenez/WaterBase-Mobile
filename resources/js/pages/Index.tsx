@@ -249,7 +249,7 @@ const Index = () => {
               <Button
                 size="lg"
                 variant="outline"
-                className="border-white text-white hover:bg-white/10 px-8 py-3"
+                className="border-white text-white bg-white/10 hover:bg-white hover:text-waterbase-600 px-8 py-3"
               >
                 Join Community
               </Button>
