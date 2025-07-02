@@ -21,7 +21,7 @@ import Navigation from "@/components/Navigation";
 import { User, Mail, Lock, Phone, MapPin } from "lucide-react";
 import { Link } from "react-router-dom";
 
-const Register = () => {
+export const Register = () => {
 const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -246,5 +246,3 @@ return (
     </div>
 );
 };
-
-export default Register;

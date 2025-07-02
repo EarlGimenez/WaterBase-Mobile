@@ -28,7 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Camera, MapPin, Upload, Smartphone } from "lucide-react";
 
-const ReportPollution = () => {
+export const ReportPollution = () => {
   const [showReportForm, setShowReportForm] = useState(false);
   // Form state
   const [newReport, setNewReport] = useState({
@@ -319,5 +319,3 @@ const ReportPollution = () => {
     </div>
   );
 };
-
-export default ReportPollution;

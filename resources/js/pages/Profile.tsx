@@ -26,7 +26,7 @@ Shield,
 Edit,
 } from "lucide-react";
 
-const Profile = () => {
+export const Profile = () => {
 const [isEditing, setIsEditing] = useState(false);
 const [profileData, setProfileData] = useState({
     firstName: "Maria",
@@ -379,5 +379,3 @@ return (
     </div>
 );
 };
-
-export default Profile;

@@ -254,7 +254,7 @@ const environmentalEvents = [
 },
 ];
 
-const ResearchMap = () => {
+export const ResearchMap = () => {
 const [selectedView, setSelectedView] = useState<"spatial" | "temporal">(
     "spatial",
 );
@@ -991,5 +991,3 @@ return (
     </div>
 );
 };
-
-export default ResearchMap;

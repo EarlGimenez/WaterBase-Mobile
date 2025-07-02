@@ -123,7 +123,7 @@ const priorityZones = [
   },
 ];
 
-const MapView = () => {
+export const MapView = () => {
   const [selectedReport, setSelectedReport] = useState<
     (typeof mockReports)[0] | null
   >(null);
@@ -581,5 +581,3 @@ const MapView = () => {
     </div>
   );
 };
-
-export default MapView;

@@ -127,7 +127,7 @@ const existingEvents = [
 },
 ];
 
-const OrganizerPortal = () => {
+export const OrganizerPortal = () => {
 const [activeTab, setActiveTab] = useState("areas");
 const [showCreateEvent, setShowCreateEvent] = useState(false);
 const [selectedArea, setSelectedArea] = useState<any>(null);
@@ -757,5 +757,3 @@ return (
     </div>
 );
 };
-
-export default OrganizerPortal;

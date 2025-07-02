@@ -118,7 +118,7 @@ const allReports = [
 },
 ];
 
-const AdminReports = () => {
+export const AdminUsers = () => {
 const [activeTab, setActiveTab] = useState("all");
 const [selectedReport, setSelectedReport] = useState<any>(null);
 const [showReportDialog, setShowReportDialog] = useState(false);
@@ -934,5 +934,3 @@ return (
     </div>
 );
 };
-
-export default AdminReports;

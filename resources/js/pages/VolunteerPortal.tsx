@@ -175,7 +175,7 @@ nextLevel: "Eco Warrior",
 pointsToNext: 125,
 };
 
-const VolunteerPortal = () => {
+export const VolunteerPortal = () => {
 const [activeTab, setActiveTab] = useState("events");
 const [searchQuery, setSearchQuery] = useState("");
 const [selectedEvent, setSelectedEvent] = useState<any>(null);
@@ -763,5 +763,3 @@ return (
     </div>
 );
 };
-
-export default VolunteerPortal;

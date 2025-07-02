@@ -19,7 +19,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
-const Dashboard = () => {
+export const Dashboard = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-waterbase-50 to-enviro-50">
       <Navigation />
@@ -294,5 +294,3 @@ const Dashboard = () => {
     </div>
   );
 };
-
-export default Dashboard;

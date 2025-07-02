@@ -19,7 +19,7 @@ import {
   Zap,
 } from "lucide-react";
 
-const Index = () => {
+export const Home = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-waterbase-50 to-enviro-50">
       <Navigation />
@@ -352,5 +352,3 @@ const Index = () => {
     </div>
   );
 };
-
-export default Index;

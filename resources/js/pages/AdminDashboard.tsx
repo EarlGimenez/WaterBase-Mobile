@@ -165,7 +165,7 @@ const volunteerTasks = [
 },
 ];
 
-const AdminDashboard = () => {
+export const AdminDashboard = () => {
 const [activeTab, setActiveTab] = useState("overview");
 const [selectedReport, setSelectedReport] = useState<any>(null);
 const [showReportDialog, setShowReportDialog] = useState(false);
@@ -882,5 +882,3 @@ return (
     </div>
 );
 };
-
-export default AdminDashboard;

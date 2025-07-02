@@ -17,7 +17,7 @@ import {
   Heart,
 } from "lucide-react";
 
-const Community = () => {
+export const Community = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-waterbase-50 to-enviro-50">
       <Navigation />
@@ -194,5 +194,3 @@ const Community = () => {
     </div>
   );
 };
-
-export default Community;

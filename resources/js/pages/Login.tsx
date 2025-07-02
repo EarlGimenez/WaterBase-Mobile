@@ -14,7 +14,7 @@ import Navigation from "@/components/Navigation";
 import { Mail, Lock, LogIn } from "lucide-react";
 import { Link } from "react-router-dom";
 
-const Login = () => {
+export const Login = () => {
 const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -203,5 +203,3 @@ return (
     </div>
 );
 };
-
-export default Login;
