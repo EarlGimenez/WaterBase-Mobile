@@ -35,6 +35,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
+import 'leaflet/dist/leaflet.css';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 
 // Mock data for pollution reports
 const mockReports = [
@@ -423,66 +425,15 @@ export const MapView = () => {
             {/* Background map simulation */}
             <div className="w-full h-full relative overflow-hidden">
               {/* Simulated map background */}
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-100 to-green-100 opacity-50" />
-
-              {/* Priority zones overlay when in priority mode */}
-              {viewMode === "priority" &&
-                priorityZones.map((zone, index) => (
-                  <div
-                    key={index}
-                    className={cn(
-                      "absolute w-24 h-24 rounded-full border-2 opacity-70",
-                      getPriorityZoneColor(zone.severity),
-                    )}
-                    style={{
-                      left: `${25 + index * 20}%`,
-                      top: `${30 + index * 15}%`,
-                    }}
-                  >
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <AlertTriangle className="w-6 h-6 text-red-600" />
-                    </div>
-                  </div>
-                ))}
-
-              {/* Report markers */}
-              {filteredReports.map((report, index) => (
-                <div
-                  key={report.id}
-                  className={cn(
-                    "absolute w-4 h-4 rounded-full cursor-pointer transform -translate-x-1/2 -translate-y-1/2 transition-all hover:scale-125 z-10",
-                    getSeverityColor(report.severity),
-                    selectedReport?.id === report.id
-                      ? "ring-2 ring-white scale-125"
-                      : "",
-                    viewMode === "priority" && report.priority === "critical"
-                      ? "ring-2 ring-red-400 animate-pulse"
-                      : "",
-                  )}
-                  style={{
-                    left: `${30 + index * 15}%`,
-                    top: `${40 + index * 10}%`,
-                  }}
-                  onClick={() => setSelectedReport(report)}
+              <MapContainer center={[10.29009, 123.86156]} zoom={13} style={{ height: "100%", width: "100%" }}>
+                <TileLayer
+                  attribution='&copy; OpenStreetMap'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
-              ))}
-
-              {/* Map center placeholder */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="text-center bg-white/80 backdrop-blur-sm rounded-lg p-6">
-                  <div className="w-16 h-16 bg-gradient-to-br from-waterbase-500 to-enviro-500 rounded-full flex items-center justify-center mb-4 mx-auto">
-                    <MapPin className="w-8 h-8 text-white" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-waterbase-950 mb-2">
-                    Interactive Map View
-                  </h3>
-                  <p className="text-waterbase-600 text-sm max-w-sm">
-                    {viewMode === "priority"
-                      ? "Priority zones highlighted in red. Click markers to view details."
-                      : "Click on pollution markers to view detailed reports."}
-                  </p>
-                </div>
-              </div>
+                <Marker position={[10.29009, 123.86156]}>
+                  <Popup>Hello React‑Leaflet v4 👋</Popup>
+                </Marker>
+              </MapContainer>
             </div>
           </div>
 
