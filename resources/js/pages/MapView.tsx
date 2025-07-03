@@ -32,11 +32,14 @@ import {
   BarChart3,
   Eye,
   Target,
+  Droplets,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import 'leaflet/dist/leaflet.css';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 // Mock data for pollution reports
 const mockReports = [
@@ -180,6 +183,26 @@ export const MapView = () => {
       default:
         return "bg-gray-500";
     }
+  };
+
+  // Add this function before the component
+  const createPollutionIcon = (report: typeof mockReports[0]) => {
+    const dropletHtml = renderToStaticMarkup(
+      <div className={cn(
+        "w-8 h-8 flex items-center justify-center rounded-full border-2 shadow-lg bg-white",
+        getSeverityColor(report.severity)
+      )}>
+        <Droplets className="w-5 h-5 text-white" />
+      </div>
+    );
+
+    return L.divIcon({
+      html: dropletHtml,
+      className: 'custom-droplet-marker',
+      iconSize: [32, 32],
+      iconAnchor: [16, 32],
+      popupAnchor: [0, -32],
+    });
   };
 
   const getPriorityZoneColor = (severity: string) => {
@@ -425,14 +448,50 @@ export const MapView = () => {
             {/* Background map simulation */}
             <div className="w-full h-full relative overflow-hidden">
               {/* Simulated map background */}
-              <MapContainer center={[10.29009, 123.86156]} zoom={13} style={{ height: "100%", width: "100%" }}>
+              <MapContainer 
+                center={[14.4793, 120.9106]} 
+                zoom={10} 
+                className="w-full h-full"
+                style={{ height: "100%", width: "100%" }}
+              >
                 <TileLayer
                   attribution='&copy; OpenStreetMap'
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
-                <Marker position={[10.29009, 123.86156]}>
-                  <Popup>Hello React‑Leaflet v4 👋</Popup>
-                </Marker>
+                
+                {/* Pollution report markers */}
+                {filteredReports.map((report) => (
+                  <Marker 
+                    key={report.id}
+                    position={[report.coordinates.lat, report.coordinates.lng]}
+                    icon={createPollutionIcon(report)}
+                    eventHandlers={{
+                      click: () => setSelectedReport(report),
+                    }}
+                  >
+                    <Popup>
+                      <div className="text-center min-w-[200px]">
+                        <div className="flex items-center justify-center mb-2">
+                          <Droplets className="w-4 h-4 mr-1 text-waterbase-600" />
+                          <span className="font-semibold">{report.location}</span>
+                        </div>
+                        <div className={cn("p-2 rounded mb-2", getSeverityColor(report.severity))}>
+                          <div className="text-sm font-bold text-white">{report.type}</div>
+                          <div className="text-xs text-white">{report.severity} Severity</div>
+                        </div>
+                        <div className="text-xs text-gray-600 mb-2">
+                          <div className="flex items-center justify-center space-x-1 mb-1">
+                            {getStatusIcon(report.status)}
+                            <span>{report.status}</span>
+                          </div>
+                          <div>Reported by: {report.reportedBy}</div>
+                          <div>Date: {report.reportedAt}</div>
+                        </div>
+                        <p className="text-xs text-gray-700">{report.description}</p>
+                      </div>
+                    </Popup>
+                  </Marker>
+                ))}
               </MapContainer>
             </div>
           </div>

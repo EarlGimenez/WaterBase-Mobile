@@ -52,6 +52,8 @@ import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import 'leaflet/dist/leaflet.css';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 // Comprehensive water quality sensor data
 const waterQualitySensors = [
@@ -287,6 +289,26 @@ const getWQIStatus = (wqi: number) => {
     if (wqi >= 40) return "Fair";
     if (wqi >= 20) return "Poor";
     return "Very Poor";
+};
+
+// Add this function before your component
+const createDropletIcon = (sensor: typeof waterQualitySensors[0]) => {
+    const dropletHtml = renderToStaticMarkup(
+        <div className={cn(
+        "w-8 h-8 flex items-center justify-center rounded-full border-2 shadow-lg bg-white",
+        getWQIColor(sensor.wqi)
+        )}>
+        <Droplets className="w-5 h-5" />
+        </div>
+    );
+
+    return L.divIcon({
+        html: dropletHtml,
+        className: 'custom-droplet-marker',
+        iconSize: [32, 32],
+        iconAnchor: [16, 32],
+        popupAnchor: [0, -32],
+    });
 };
 
 const getTrendIcon = (trend: string) => {
@@ -704,35 +726,36 @@ return (
                     attribution='&copy; OpenStreetMap'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
-            
-            {/* Water quality sensor markers */}
-            {showLayers.sensors && waterQualitySensors.map((sensor) => (
-                <Marker 
-                key={sensor.id}
-                position={[sensor.coordinates.lat, sensor.coordinates.lng]}
-                eventHandlers={{
-                    click: () => setSelectedSensor(sensor),
-                }}
-                >
-                <Popup>
-                    <div className="text-center">
-                    <div className="flex items-center justify-center mb-2">
-                        <Droplets className="w-4 h-4 mr-1 text-waterbase-600" />
-                        <span className="font-semibold">{sensor.name}</span>
-                    </div>
-                    <div className={cn("p-2 rounded", getWQIColor(sensor.wqi))}>
-                        <div className="text-lg font-bold">WQI: {sensor.wqi}</div>
-                        <div className="text-sm">{sensor.status}</div>
-                    </div>
-                    <div className="mt-2 text-xs text-gray-600">
-                        <div>pH: {sensor.physicochemical.ph}</div>
-                        <div>Temp: {sensor.physicochemical.temperature}°C</div>
-                        <div>DO: {sensor.physicochemical.dissolvedOxygen} mg/L</div>
-                    </div>
-                    </div>
-                </Popup>
-                </Marker>
-            ))}
+
+                {/* Move the markers INSIDE the MapContainer */}
+                {showLayers.sensors && waterQualitySensors.map((sensor) => (
+                    <Marker 
+                        key={sensor.id}
+                        position={[sensor.coordinates.lat, sensor.coordinates.lng]}
+                        icon={createDropletIcon(sensor)}
+                        eventHandlers={{
+                            click: () => setSelectedSensor(sensor),
+                        }}
+                    >
+                        <Popup>
+                            <div className="text-center">
+                                <div className="flex items-center justify-center mb-2">
+                                    <Droplets className="w-4 h-4 mr-1 text-waterbase-600" />
+                                    <span className="font-semibold">{sensor.name}</span>
+                                </div>
+                                <div className={cn("p-2 rounded", getWQIColor(sensor.wqi))}>
+                                    <div className="text-lg font-bold">WQI: {sensor.wqi}</div>
+                                    <div className="text-sm">{sensor.status}</div>
+                                </div>
+                                <div className="mt-2 text-xs text-gray-600">
+                                    <div>pH: {sensor.physicochemical.ph}</div>
+                                    <div>Temp: {sensor.physicochemical.temperature}°C</div>
+                                    <div>DO: {sensor.physicochemical.dissolvedOxygen} mg/L</div>
+                                </div>
+                            </div>
+                        </Popup>
+                    </Marker>
+                ))}
             </MapContainer>
 
             {/* Land use overlays */}

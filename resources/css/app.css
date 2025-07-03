@@ -128,3 +128,12 @@ body {
 .read-the-docs {
   color: #888;
 }
+
+.custom-droplet-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.custom-droplet-marker div {
+  transform: translate(-50%, -100%);
+}
