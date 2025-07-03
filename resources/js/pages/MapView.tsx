@@ -439,7 +439,7 @@ export const MapView = () => {
 
           {/* Selected report details overlay */}
           {selectedReport && (
-            <div className="absolute top-4 right-4 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-20">
+            <div className="absolute top-4 right-4 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-20" style={{ zIndex: 10000 }}>
               <div className="p-4">
                 <div className="flex items-start justify-between mb-3">
                   <h3 className="font-semibold text-waterbase-950">

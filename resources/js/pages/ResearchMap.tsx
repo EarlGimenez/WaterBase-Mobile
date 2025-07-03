@@ -50,6 +50,8 @@ TreePine,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
+import 'leaflet/dist/leaflet.css';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 
 // Comprehensive water quality sensor data
 const waterQualitySensors = [
@@ -691,33 +693,47 @@ return (
             {showLayers.satellite && (
                 <div className="absolute inset-0 bg-gradient-to-br from-green-200 via-blue-200 to-green-300 opacity-40" />
             )}
-
-            {/* Water quality sensor stations */}
-            {showLayers.sensors &&
-                waterQualitySensors.map((sensor, index) => (
-                <div
-                    key={sensor.id}
-                    className={cn(
-                    "absolute w-12 h-12 rounded-full border-3 cursor-pointer transform -translate-x-1/2 -translate-y-1/2 transition-all hover:scale-110",
-                    getWQIColor(sensor.wqi),
-                    selectedSensor?.id === sensor.id
-                        ? "ring-4 ring-waterbase-500 scale-125"
-                        : "",
-                    )}
-                    style={{
-                    left: `${25 + index * 30}%`,
-                    top: `${20 + index * 25}%`,
-                    }}
-                    onClick={() => setSelectedSensor(sensor)}
+            
+            <MapContainer 
+                center={[14.4793, 120.9106]} 
+                zoom={10} 
+                className="w-full h-full"
+                style={{ height: '100%', width: '100%' }}
+            >
+                <TileLayer
+                    attribution='&copy; OpenStreetMap'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+            
+            {/* Water quality sensor markers */}
+            {showLayers.sensors && waterQualitySensors.map((sensor) => (
+                <Marker 
+                key={sensor.id}
+                position={[sensor.coordinates.lat, sensor.coordinates.lng]}
+                eventHandlers={{
+                    click: () => setSelectedSensor(sensor),
+                }}
                 >
-                    <div className="absolute inset-0 flex items-center justify-center">
+                <Popup>
                     <div className="text-center">
-                        <Droplets className="w-4 h-4 mx-auto mb-1" />
-                        <span className="text-xs font-bold">{sensor.wqi}</span>
+                    <div className="flex items-center justify-center mb-2">
+                        <Droplets className="w-4 h-4 mr-1 text-waterbase-600" />
+                        <span className="font-semibold">{sensor.name}</span>
+                    </div>
+                    <div className={cn("p-2 rounded", getWQIColor(sensor.wqi))}>
+                        <div className="text-lg font-bold">WQI: {sensor.wqi}</div>
+                        <div className="text-sm">{sensor.status}</div>
+                    </div>
+                    <div className="mt-2 text-xs text-gray-600">
+                        <div>pH: {sensor.physicochemical.ph}</div>
+                        <div>Temp: {sensor.physicochemical.temperature}°C</div>
+                        <div>DO: {sensor.physicochemical.dissolvedOxygen} mg/L</div>
                     </div>
                     </div>
-                </div>
-                ))}
+                </Popup>
+                </Marker>
+            ))}
+            </MapContainer>
 
             {/* Land use overlays */}
             {showLayers.landuse &&
@@ -742,48 +758,12 @@ return (
                     </div>
                 </div>
                 ))}
-
-            {/* Center information panel */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="text-center bg-white/90 backdrop-blur-sm rounded-lg p-6 max-w-md">
-                <div className="w-16 h-16 bg-gradient-to-br from-waterbase-500 to-enviro-500 rounded-full flex items-center justify-center mb-4 mx-auto">
-                    {selectedView === "spatial" ? (
-                    <Microscope className="w-8 h-8 text-white" />
-                    ) : (
-                    <BarChart3 className="w-8 h-8 text-white" />
-                    )}
-                </div>
-                <h3 className="text-lg font-semibold text-waterbase-950 mb-2">
-                    {selectedView === "spatial"
-                    ? "Spatial Water Quality Analysis"
-                    : "Temporal Trend Analysis"}
-                </h3>
-                <p className="text-waterbase-600 text-sm">
-                    {selectedView === "spatial"
-                    ? "Interactive scientific monitoring with physico-chemical, biological, and optical data layers"
-                    : `Analyzing ${selectedParameter} trends across selected time period with environmental event correlation`}
-                </p>
-                <div className="flex justify-center space-x-2 mt-3">
-                    {Object.entries(showLayers)
-                    .filter(([_, active]) => active)
-                    .map(([layer, _], index) => (
-                        <Badge
-                        key={layer}
-                        variant="secondary"
-                        className="text-xs"
-                        >
-                        {layer === "landuse" ? "Land Use" : layer}
-                        </Badge>
-                    ))}
-                </div>
-                </div>
-            </div>
             </div>
         </div>
 
         {/* Selected sensor detailed analysis */}
         {selectedSensor && (
-            <div className="absolute top-4 right-4 w-96 bg-white rounded-lg shadow-lg border border-gray-200 max-h-[80vh] overflow-y-auto">
+            <div className="absolute top-4 right-4 w-96 bg-white rounded-lg shadow-lg border border-gray-200 max-h-[80vh] overflow-y-auto" style={{ zIndex: 1000 }}>
             <div className="p-4">
                 <div className="flex items-start justify-between mb-4">
                 <h3 className="font-semibold text-waterbase-950">
