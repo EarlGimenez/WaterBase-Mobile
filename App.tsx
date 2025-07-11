@@ -13,9 +13,6 @@ import MapViewScreen from "./src/screens/MapViewScreen";
 import CommunityScreen from "./src/screens/CommunityScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
 
-// Configure navigation
-import "./global.css";
-
 const Stack = createNativeStackNavigator();
 
 export default function App() {
