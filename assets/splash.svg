@@ -1,0 +1,6 @@
+<svg width="1080" height="1920" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1080" height="1920" fill="#ffffff"/>
+  <circle cx="540" cy="960" r="200" fill="#007AFF"/>
+  <text x="540" y="990" font-family="Arial, sans-serif" font-size="80" font-weight="bold" text-anchor="middle" fill="white">WB</text>
+  <text x="540" y="1200" font-family="Arial, sans-serif" font-size="40" text-anchor="middle" fill="#666">WaterBase Mobile</text>
+</svg>
