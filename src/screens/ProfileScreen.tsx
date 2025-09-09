@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { ScrollView, View, Text, TouchableOpacity } from "react-native";
+import { ScrollView, View, Text, TouchableOpacity, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -10,6 +10,8 @@ import {
   CardContent,
 } from "../components/ui/Card";
 import Navigation from "../components/Navigation";
+import ProtectedContent from "../components/ProtectedContent";
+import { useAuth } from "../contexts/AuthContext";
 
 interface UserStats {
   reportsSubmitted?: number;
@@ -27,19 +29,24 @@ interface UserStats {
 }
 
 const ProfileScreen = () => {
+  const { user, logout } = useAuth();
   const [userStats, setUserStats] = useState<UserStats>({});
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('activity');
 
-  // Mock user data - replace with actual user context
-  const user = {
-    firstName: "John",
-    lastName: "Doe",
-    email: "john.doe@example.com",
-    role: "volunteer",
-    organization: "Manila Bay Environmental Group",
-    areaOfResponsibility: "Manila Bay Area",
-    created_at: "2024-01-15T00:00:00Z"
+  const handleLogout = () => {
+    Alert.alert(
+      "Sign Out",
+      "Are you sure you want to sign out?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign Out",
+          style: "destructive",
+          onPress: () => logout(),
+        },
+      ]
+    );
   };
 
   useEffect(() => {
@@ -123,7 +130,8 @@ const ProfileScreen = () => {
     </TouchableOpacity>
   );
       return (
-    <SafeAreaView className="flex-1 bg-gradient-to-br from-waterbase-50 to-enviro-50">
+    <ProtectedContent>
+      <SafeAreaView className="flex-1 bg-gradient-to-br from-waterbase-50 to-enviro-50">
       <Navigation title="Profile" showBackButton={true} />
 
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
@@ -140,7 +148,7 @@ const ProfileScreen = () => {
                     className="w-20 h-20 rounded-full items-center justify-center"
                   >
                     <Text className="text-white text-2xl font-bold">
-                      {user.firstName[0]}{user.lastName[0]}
+                      {user ? `${user.firstName[0]}${user.lastName[0]}` : 'U'}
                     </Text>
                   </LinearGradient>
                   <TouchableOpacity className="absolute -bottom-1 -right-1 w-6 h-6 bg-white rounded-full items-center justify-center border border-gray-300">
@@ -148,18 +156,24 @@ const ProfileScreen = () => {
                   </TouchableOpacity>
                 </View>
 
-                <Text className="text-xl font-bold text-waterbase-950 mb-2 text-center">
-                  {user.firstName} {user.lastName}
+                <Text className="text-xl font-bold text-waterbase-950 mb-1 text-center">
+                  {user ? `${user.firstName} ${user.lastName}` : 'Guest User'}
                 </Text>
+                
+                {user && (
+                  <Text className="text-sm text-waterbase-600 mb-3 text-center">
+                    {user.email}
+                  </Text>
+                )}
 
                 <View className="items-center mb-3">
-                  {user.areaOfResponsibility && (
+                  {user?.areaOfResponsibility && (
                     <View className="flex-row items-center mb-1">
                       <Ionicons name="location" size={16} color="#0369a1" />
                       <Text className="ml-1 text-sm text-waterbase-600">{user.areaOfResponsibility}</Text>
                     </View>
                   )}
-                  {user.organization && (
+                  {user?.organization && (
                     <View className="flex-row items-center">
                       <Ionicons name="business" size={16} color="#0369a1" />
                       <Text className="ml-1 text-sm text-waterbase-600">{user.organization}</Text>
@@ -170,15 +184,12 @@ const ProfileScreen = () => {
                 <View className="flex-row items-center space-x-2 mb-3">
                   <View className="bg-waterbase-100 px-3 py-1 rounded-full">
                     <Text className="text-xs font-medium text-waterbase-700">
-                      {user.role.toUpperCase()}
+                      {user ? user.role.toUpperCase() : 'GUEST'}
                     </Text>
                   </View>
                   <View className="bg-enviro-100 px-3 py-1 rounded-full">
                     <Text className="text-xs font-medium text-enviro-700">
-                      Member since {new Date(user.created_at).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'long'
-                      })}
+                      Member since {user ? 'Jan 2024' : 'Today'}
                     </Text>
                   </View>
                 </View>
@@ -297,7 +308,10 @@ const ProfileScreen = () => {
                       </View>
                       <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
                     </TouchableOpacity>
-                    <TouchableOpacity className="flex-row items-center justify-between py-2">
+                    <TouchableOpacity 
+                      onPress={handleLogout}
+                      className="flex-row items-center justify-between py-2"
+                    >
                       <View className="flex-row items-center">
                         <Ionicons name="log-out-outline" size={20} color="#dc2626" />
                         <Text className="ml-3 text-red-600">Sign Out</Text>
@@ -312,6 +326,7 @@ const ProfileScreen = () => {
         </View>
       </ScrollView>
     </SafeAreaView>
+    </ProtectedContent>
   );
 };
 

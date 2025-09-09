@@ -10,6 +10,7 @@ import {
   CardContent,
 } from "../components/ui/Card";
 import Navigation from "../components/Navigation";
+import ProtectedContent from "../components/ProtectedContent";
 
 const CommunityScreen = () => {
   const communityPosts = [
@@ -72,7 +73,8 @@ const CommunityScreen = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-gradient-to-br from-waterbase-50 to-enviro-50">
+    <ProtectedContent>
+      <SafeAreaView className="flex-1 bg-gradient-to-br from-waterbase-50 to-enviro-50">
       <Navigation title="Community" showBackButton={true} />
 
       <ScrollView className="flex-1 px-4" showsVerticalScrollIndicator={false}>
@@ -271,6 +273,7 @@ const CommunityScreen = () => {
         </View>
       </ScrollView>
     </SafeAreaView>
+    </ProtectedContent>
   );
 };
 

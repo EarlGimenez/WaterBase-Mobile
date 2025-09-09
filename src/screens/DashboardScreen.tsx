@@ -129,7 +129,7 @@ const DashboardScreen = () => {
                           {stat.title}
                         </Text>
                         <Ionicons
-                          name={stat.icon}
+                          name={stat.icon as any}
                           size={16}
                           color={stat.color}
                         />
