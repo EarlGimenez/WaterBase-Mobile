@@ -9,6 +9,7 @@ interface ButtonProps {
   disabled?: boolean;
   icon?: React.ReactNode;
   className?: string;
+  textColor?: string;
 }
 
 export const Button: React.FC<ButtonProps> = ({
@@ -19,6 +20,7 @@ export const Button: React.FC<ButtonProps> = ({
   disabled = false,
   icon,
   className = "",
+  textColor,
 }) => {
   const getVariantStyles = () => {
     switch (variant) {
@@ -72,7 +74,7 @@ export const Button: React.FC<ButtonProps> = ({
       `}
     >
       {icon && <View className="mr-2">{icon}</View>}
-      <Text className={`font-semibold ${getTextColor()}`}>{title}</Text>
+      <Text className={`font-semibold ${textColor || getTextColor()}`}>{title}</Text>
     </TouchableOpacity>
   );
 };

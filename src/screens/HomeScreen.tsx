@@ -1,8 +1,9 @@
 import React from "react";
-import { ScrollView, View, Text } from "react-native";
+import { ScrollView, View, Text, TouchableOpacity } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { Button } from "../components/ui/Button";
 import {
   Card,
@@ -68,7 +69,7 @@ const HomeScreen = () => {
   ];
 
   return (
-    <SafeAreaView className="flex-1 bg-gradient-to-br from-waterbase-50 to-enviro-50">
+    <SafeAreaView className="flex-1 bg-gradient-to-br from-waterbase-50 to-enviro-50" edges={['top', 'left', 'right']}>
       <Navigation />
 
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
@@ -86,22 +87,21 @@ const HomeScreen = () => {
               pollution through AI-powered verification.
             </Text>
 
-            <View className="w-full space-y-3">
-              <Button
-                title="View Live Map"
+            <View className="w-full">
+              <TouchableOpacity 
                 onPress={() => navigation.navigate("MapView")}
-                size="lg"
-                icon={<Ionicons name="location" size={20} color="white" />}
-                className="w-full"
-              />
-              <Button
-                title="Report Pollution"
+                className="w-full mb-3 bg-waterbase-500 rounded-lg p-4 flex-row items-center justify-center"
+              >
+                <Ionicons name="location" size={20} color="white" />
+                <Text className="ml-2 text-white font-semibold text-lg">View Live Map</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
                 onPress={() => navigation.navigate("ReportPollution")}
-                variant="outline"
-                size="lg"
-                icon={<Ionicons name="camera" size={20} color="#0369a1" />}
-                className="w-full"
-              />
+                className="w-full bg-transparent border border-waterbase-500 rounded-lg p-4 flex-row items-center justify-center"
+              >
+                <Ionicons name="camera" size={20} color="#0369a1" />
+                <Text className="ml-2 text-waterbase-700 font-semibold text-lg">Report Pollution</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -118,12 +118,12 @@ const HomeScreen = () => {
             </Text>
           </View>
 
-          <View className="space-y-4">
+          <View className="mt-4">
             {features.map((feature, index) => (
-              <Card key={index} className="border-waterbase-200">
-                <CardHeader>
-                  <View className="flex-row items-start space-x-3">
-                    <View className="w-12 h-12 bg-waterbase-100 rounded-lg items-center justify-center">
+              <Card key={index} className="border-waterbase-200 mb-4">
+                <CardHeader className="p-4">
+                  <View className="flex-row items-start">
+                    <View className="w-12 h-12 bg-waterbase-100 rounded-lg items-center justify-center mr-3">
                       <Ionicons
                         name={feature.icon}
                         size={24}
@@ -151,10 +151,10 @@ const HomeScreen = () => {
             Built for Every Stakeholder
           </Text>
 
-          <View className="space-y-4 mb-6">
+          <View className="mt-4 mb-4">
             {platformFeatures.map((feature, index) => (
-              <View key={index} className="flex-row items-start space-x-3">
-                <View className="w-10 h-10 bg-waterbase-100 rounded-lg items-center justify-center">
+              <View key={index} className="flex-row items-start mb-4">
+                <View className="w-10 h-10 bg-waterbase-100 rounded-lg items-center justify-center mr-3">
                   <Ionicons name={feature.icon} size={20} color="#0ea5e9" />
                 </View>
                 <View className="flex-1">
@@ -169,21 +169,36 @@ const HomeScreen = () => {
             ))}
           </View>
 
-          <View className="bg-gradient-to-br from-waterbase-100 to-enviro-100 rounded-2xl p-6 items-center">
-            <View className="w-16 h-16 bg-gradient-to-br from-waterbase-500 to-enviro-500 rounded-full items-center justify-center mb-3">
+          <LinearGradient
+            colors={['#e0f2fe', '#dcfce7']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            className="rounded-2xl p-6 items-center"
+          >
+            <LinearGradient
+              colors={['#0ea5e9', '#22c55e']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              className="w-16 h-16 rounded-full items-center justify-center mb-3"
+            >
               <Ionicons name="globe-outline" size={32} color="white" />
-            </View>
+            </LinearGradient>
             <Text className="text-waterbase-700 font-medium text-center">
               Interactive Map Visualization
             </Text>
             <Text className="text-sm text-waterbase-600 mt-1 text-center">
               Real-time pollution monitoring across the Philippines
             </Text>
-          </View>
+          </LinearGradient>
         </View>
 
         {/* Call to Action */}
-        <View className="bg-gradient-to-r from-waterbase-500 to-enviro-500 px-4 py-8">
+        <LinearGradient
+          colors={['#0284C5', '#10B77F']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          className="px-4 py-8"
+        >
           <View className="items-center">
             <Text className="text-2xl font-bold text-white mb-4 text-center">
               Join the Movement for Cleaner Waters
@@ -192,33 +207,38 @@ const HomeScreen = () => {
               Whether you're a concerned citizen, environmental organization, or
               government agency, WaterBase provides the tools you need.
             </Text>
-            <View className="w-full space-y-3">
-              <Button
-                title="Start Reporting"
+            <View className="w-full px-4">
+              <TouchableOpacity
                 onPress={() => navigation.navigate("ReportPollution")}
-                variant="secondary"
-                size="lg"
-                className="w-full"
-              />
-              <Button
-                title="Join Community"
+                className="w-full mb-3 bg-white rounded-lg p-4 flex-row items-center justify-center"
+              >
+                <Ionicons name="camera" size={20} color="#0ea5e9" />
+                <Text className="ml-2 text-waterbase-700 font-semibold text-lg flex-shrink">Start Reporting</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
                 onPress={() => navigation.navigate("Community")}
-                variant="outline"
-                size="lg"
-                className="w-full border-white"
-              />
+                className="w-full bg-transparent border border-white rounded-lg p-4 flex-row items-center justify-center"
+              >
+                <Ionicons name="people" size={20} color="white" />
+                <Text className="ml-2 text-white font-semibold text-lg flex-shrink">Join Community</Text>
+              </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </LinearGradient>
 
         {/* Footer */}
-        <View className="bg-waterbase-950 px-4 py-8">
+        <View className="bg-waterbase-950 px-4" style={{ paddingTop: 32, paddingBottom: 52 }}>
           <View className="items-center mb-6">
-            <View className="flex-row items-center mb-3">
-              <View className="w-8 h-8 bg-gradient-to-br from-waterbase-500 to-enviro-500 rounded-lg items-center justify-center mr-2">
+            <View className="flex-row items-center justify-center mb-3">
+              <LinearGradient
+                colors={['#0284C5', '#10B77F']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                className="w-8 h-8 rounded-lg items-center justify-center mr-2"
+              >
                 <Ionicons name="location" size={20} color="white" />
-              </View>
-              <Text className="text-xl font-bold text-white">WaterBase</Text>
+              </LinearGradient>
+              <Text className="text-xl font-bold text-white flex-shrink" numberOfLines={1}>WaterBase</Text>
             </View>
             <Text className="text-waterbase-300 text-center text-sm">
               Transforming water protection through community engagement, AI

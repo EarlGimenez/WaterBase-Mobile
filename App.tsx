@@ -12,10 +12,22 @@ import ReportPollutionScreen from "./src/screens/ReportPollutionScreen";
 import MapViewScreen from "./src/screens/MapViewScreen";
 import CommunityScreen from "./src/screens/CommunityScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
+import NotificationScreen from "./src/screens/NotificationScreen";
+
+// Import components
+import Layout from "./src/components/Layout";
 
 const Stack = createNativeStackNavigator();
 
 export default function App() {
+  const ScreenWithLayout = (Component: React.ComponentType) => {
+    return (props: any) => (
+      <Layout>
+        <Component {...props} />
+      </Layout>
+    );
+  };
+
   return (
     <SafeAreaProvider>
       <NavigationContainer>
@@ -25,16 +37,14 @@ export default function App() {
             headerShown: false,
           }}
         >
-          <Stack.Screen name="Home" component={HomeScreen} />
+          <Stack.Screen name="Home" component={ScreenWithLayout(HomeScreen)} />
           <Stack.Screen name="Login" component={LoginScreen} />
-          <Stack.Screen name="Dashboard" component={DashboardScreen} />
-          <Stack.Screen
-            name="ReportPollution"
-            component={ReportPollutionScreen}
-          />
-          <Stack.Screen name="MapView" component={MapViewScreen} />
-          <Stack.Screen name="Community" component={CommunityScreen} />
-          <Stack.Screen name="Profile" component={ProfileScreen} />
+          <Stack.Screen name="Dashboard" component={ScreenWithLayout(DashboardScreen)} />
+          <Stack.Screen name="ReportPollution" component={ScreenWithLayout(ReportPollutionScreen)} />
+          <Stack.Screen name="MapView" component={ScreenWithLayout(MapViewScreen)} />
+          <Stack.Screen name="Community" component={ScreenWithLayout(CommunityScreen)} />
+          <Stack.Screen name="Profile" component={ScreenWithLayout(ProfileScreen)} />
+          <Stack.Screen name="Notifications" component={ScreenWithLayout(NotificationScreen)} />
         </Stack.Navigator>
         <StatusBar style="auto" />
       </NavigationContainer>

@@ -47,7 +47,7 @@ export const CardContent: React.FC<CardContentProps> = ({
   children,
   className = "",
 }) => {
-  return <View className={`p-4 pt-0 ${className}`}>{children}</View>;
+  return <View className={`p-4 ${className}`}>{children}</View>;
 };
 
 export const CardTitle: React.FC<CardTitleProps> = ({

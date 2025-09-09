@@ -30,9 +30,9 @@ const ReportPollutionScreen = () => {
   const pollutionTypes = [
     "Industrial Waste",
     "Chemical Pollution",
+    "Oil Spill",
     "Plastic Pollution",
     "Sewage Discharge",
-    "Oil Spill",
     "Other",
   ];
   const severityLevels = ["Low", "Medium", "High", "Critical"];
