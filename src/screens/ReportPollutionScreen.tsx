@@ -22,10 +22,17 @@ import {
   CardTitle,
   CardContent,
 } from "../components/ui/Card";
+import { OpenStreetMapSearchableSelect } from "../components/ui/OpenStreetMapSearchableSelect";
 import Navigation from "../components/Navigation";
 import ProtectedContent from "../components/ProtectedContent";
 import { useAuth } from "../contexts/AuthContext";
 import { API_ENDPOINTS, apiRequest } from "../config/api";
+import { 
+  getCurrentLocation, 
+  fetchAddressFromCoordinates, 
+  validateCoordinates, 
+  formatCoordinates 
+} from "../utils/location";
 
 const ReportPollutionScreen = () => {
   const navigation = useNavigation();
@@ -65,7 +72,7 @@ const ReportPollutionScreen = () => {
     "Clean",
     "Other",
   ];
-  const severityLevels = ["Low", "Medium", "High", "Critical"] as const;
+  const severityLevels = ["low", "medium", "high", "critical"] as const;
 
   type SeverityLevel = typeof severityLevels[number];
 
@@ -81,8 +88,48 @@ const ReportPollutionScreen = () => {
     return true;
   };
 
+  // Get current location using mobile location utilities
+  const handleGetCurrentLocation = async () => {
+    try {
+      setVerificationStatus('verifying');
+      const location = await getCurrentLocation();
+      const address = await fetchAddressFromCoordinates(location.latitude, location.longitude);
+      
+      setFormData(prev => ({
+        ...prev,
+        latitude: location.latitude.toString(),
+        longitude: location.longitude.toString(),
+        address: address || formatCoordinates(location.latitude, location.longitude)
+      }));
+      
+      setShowLocationFields(false);
+      setVerificationStatus('success');
+    } catch (error) {
+      console.error('Location error:', error);
+      Alert.alert('Location Error', error instanceof Error ? error.message : 'Failed to get current location. Please enter manually.');
+      setShowLocationFields(true);
+      setVerificationStatus('failed');
+    }
+  };
+
+  // Handle location selection from OpenStreetMap search
+  const handleLocationSelect = (address: string) => {
+    setFormData(prev => ({ ...prev, address }));
+    setVerificationStatus('success');
+    setShowLocationFields(false);
+  };
+
+  // Handle coordinates change from OpenStreetMap search
+  const handleCoordinatesChange = (coordinates: { latitude: number; longitude: number }) => {
+    setFormData(prev => ({
+      ...prev,
+      latitude: coordinates.latitude.toString(),
+      longitude: coordinates.longitude.toString()
+    }));
+  };
+
   // Get current location
-  const getCurrentLocation = async () => {
+  const getCurrentLocationOld = async () => {
     try {
       const location = await Location.getCurrentPositionAsync({});
       const address = await reverseGeocode(location.coords.latitude, location.coords.longitude);
@@ -160,10 +207,10 @@ const ReportPollutionScreen = () => {
           }));
           setVerificationStatus('success');
         } else {
-          await getCurrentLocation();
+          await handleGetCurrentLocation();
         }
       } else {
-        await getCurrentLocation();
+        await handleGetCurrentLocation();
       }
       
       // Run AI analysis
@@ -211,9 +258,7 @@ const ReportPollutionScreen = () => {
       const response = await apiRequest(API_ENDPOINTS.PREDICT, {
         method: 'POST',
         body: aiFormData,
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        // Don't set Content-Type header for FormData - let the browser set it with boundary
       });
 
       if (response.ok) {
@@ -258,11 +303,31 @@ const ReportPollutionScreen = () => {
         setAiResults(pred);
         setAiScanStatus('success');
         
-        Alert.alert(
-          'AI Analysis Complete',
-          `Detected pollution type: ${inferredType}\nSeverity: ${pred.severity_level || 'medium'}\nConfidence: ${pred.overall_confidence}%`,
-          [{ text: 'OK' }]
-        );
+        // Check if water was detected and show appropriate alert
+        if (!hasWater) {
+          Alert.alert(
+            '⚠️ No Water Bodies Detected',
+            `AI analysis completed but no water was found in this image.\n\nDetected: ${inferredType}\nConfidence: ${pred.overall_confidence}%\n\n⚠️ Warning: Reports without water bodies may be rejected during submission.`,
+            [
+              { 
+                text: 'Retake Photo', 
+                onPress: () => {
+                  setFormData(prev => ({ ...prev, image: '' }));
+                  setAiResults(null);
+                  setAiScanStatus('idle');
+                  handleCameraCapture();
+                }
+              },
+              { text: 'Continue Anyway', style: 'destructive' }
+            ]
+          );
+        } else {
+          Alert.alert(
+            '✅ AI Analysis Complete',
+            `Detected pollution type: ${inferredType}\nSeverity: ${pred.severity_level || 'medium'}\nConfidence: ${pred.overall_confidence}%\n\nWater detected: ${waterPreds.length} area(s)`,
+            [{ text: 'OK' }]
+          );
+        }
       } else {
         throw new Error('AI analysis failed');
       }
@@ -273,46 +338,153 @@ const ReportPollutionScreen = () => {
     }
   };
 
-  // Validation
-  const validateForm = (): string | null => {
+  // Water body validation
+  const validateWaterPresence = (): { hasWater: boolean; message: string } => {
+    if (!aiResults) {
+      return {
+        hasWater: false,
+        message: 'AI analysis is required to verify water presence. Please wait for analysis to complete or retake the photo.'
+      };
+    }
+
+    const waterPreds = Array.isArray(aiResults.water_predictions) ? aiResults.water_predictions : [];
+    const hasWater = waterPreds.length > 0 && aiResults.total_water_area > 0;
+    
+    if (!hasWater) {
+      return {
+        hasWater: false,
+        message: 'No water bodies detected in this image. Water pollution reports must contain visible water sources. Please take a photo that clearly shows a water body (river, lake, ocean, etc.).'
+      };
+    }
+
+    return { hasWater: true, message: '' };
+  };
+
+  // Submit report
+  const handleSubmit = async () => {
+    // Basic validation first
+    const basicValidation = validateBasicForm();
+    if (basicValidation) {
+      Alert.alert('Validation Error', basicValidation);
+      return;
+    }
+
+    if (!user?.id) {
+      Alert.alert('Authentication Error', 'Please log in to submit a report');
+      return;
+    }
+
+    // Check for water presence with detailed warning
+    const waterValidation = validateWaterPresence();
+    if (!waterValidation.hasWater) {
+      Alert.alert(
+        'No Water Bodies Detected',
+        waterValidation.message + '\n\nWould you like to:',
+        [
+          {
+            text: 'Retake Photo',
+            style: 'default',
+            onPress: () => {
+              // Clear current image and AI results
+              setFormData(prev => ({ ...prev, image: '' }));
+              setAiResults(null);
+              setAiScanStatus('idle');
+              // Trigger camera/gallery selection
+              handleCameraCapture();
+            }
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel'
+          },
+          {
+            text: 'Submit Anyway',
+            style: 'destructive',
+            onPress: () => {
+              Alert.alert(
+                'Warning: Invalid Report',
+                'Submitting a report without water bodies may result in report rejection and could affect your account standing. Are you sure you want to proceed?',
+                [
+                  { text: 'No, Go Back', style: 'cancel' },
+                  { 
+                    text: 'Yes, Submit', 
+                    style: 'destructive',
+                    onPress: () => proceedWithSubmission()
+                  }
+                ]
+              );
+            }
+          }
+        ],
+        { cancelable: false }
+      );
+      return;
+    }
+
+    // If water is detected, proceed normally
+    await proceedWithSubmission();
+  };
+
+  // Separate basic validation (excluding water validation)
+  const validateBasicForm = (): string | null => {
     if (!formData.title.trim()) return 'Title is required';
     if (!formData.content.trim()) return 'Description is required';
     if (!formData.pollutionType) return 'Pollution type is required';
     if (!formData.severityByUser) return 'Severity level is required';
     if (!formData.latitude || !formData.longitude) return 'Location is required';
     if (!formData.image) return 'Image is required';
+    
+    // Validate coordinates using utility function
+    const lat = parseFloat(formData.latitude);
+    const lng = parseFloat(formData.longitude);
+    if (isNaN(lat) || isNaN(lng) || !validateCoordinates(lat, lng)) {
+      return 'Please provide valid coordinates';
+    }
+    
     return null;
   };
 
-  // Submit report
-  const handleSubmit = async () => {
-    const validationError = validateForm();
-    if (validationError) {
-      Alert.alert('Validation Error', validationError);
-      return;
-    }
+  // Actual submission logic
+  const proceedWithSubmission = async () => {
 
     setIsSubmitting(true);
     setSubmitStatus('idle');
     setShowSubmitModal(true);
 
     try {
-      // Create form data for submission
+      // Create form data for submission according to backend schema
       const submitFormData = new FormData();
+      
+      // Required fields according to ReportController validation
       submitFormData.append('title', formData.title);
       submitFormData.append('content', formData.content);
       submitFormData.append('address', formData.address);
       submitFormData.append('latitude', formData.latitude);
       submitFormData.append('longitude', formData.longitude);
-      submitFormData.append('pollution_type', formData.pollutionType);
-      submitFormData.append('severity_by_user', formData.severityByUser);
-      submitFormData.append('source', 'mobile');
+      submitFormData.append('pollutionType', formData.pollutionType); // Note: backend expects 'pollutionType', not 'pollution_type'
+      submitFormData.append('severityByUser', formData.severityByUser); // Note: backend expects 'severityByUser', not 'severity_by_user'
+      submitFormData.append('user_id', user!.id.toString());
+      submitFormData.append('status', 'pending'); // Default status
       
-      // Include AI results if available
+      // AI Analysis fields - map from AI results or use defaults
       if (aiResults) {
-        submitFormData.append('ai_results', JSON.stringify(aiResults));
-        submitFormData.append('ai_confidence', aiResults.overall_confidence?.toString() || '0');
-        submitFormData.append('pollution_percentage', aiResults.pollution_percentage?.toString() || '0');
+        // Map AI analysis to backend expected format
+        const severityByAI = aiResults.severity_level || 'low';
+        const aiConfidence = aiResults.overall_confidence || 0;
+        const pollutionPercentage = aiResults.pollution_percentage || 0;
+        const hasValidPollution = (aiResults.trash_predictions && aiResults.trash_predictions.length > 0) || 
+                                  (aiResults.pollution_predictions && aiResults.pollution_predictions.length > 0);
+        
+        submitFormData.append('severityByAI', severityByAI);
+        submitFormData.append('ai_confidence', aiConfidence.toString());
+        submitFormData.append('severityPercentage', pollutionPercentage.toString());
+        submitFormData.append('ai_verified', hasValidPollution ? 'true' : 'false');
+      } else {
+        // Default AI values when no AI analysis is available
+        submitFormData.append('severityByAI', formData.severityByUser || 'low');
+        submitFormData.append('ai_confidence', '0');
+        submitFormData.append('severityPercentage', '0');
+        submitFormData.append('ai_verified', 'false');
       }
 
       // Add image
@@ -324,23 +496,37 @@ const ReportPollutionScreen = () => {
         } as any);
       }
 
+      console.log('🚀 Submitting report with data:', {
+        title: formData.title,
+        user_id: user!.id,
+        pollutionType: formData.pollutionType,
+        severityByUser: formData.severityByUser,
+        hasAI: !!aiResults,
+        aiResults: aiResults ? {
+          severity_level: aiResults.severity_level,
+          overall_confidence: aiResults.overall_confidence,
+          pollution_percentage: aiResults.pollution_percentage
+        } : null
+      });
+
       const response = await apiRequest(API_ENDPOINTS.REPORTS, {
         method: 'POST',
         body: submitFormData,
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        // Don't set Content-Type header for FormData - let the browser set it with boundary
       });
 
       if (response.ok) {
+        const responseData = await response.json();
+        console.log('✅ Report submitted successfully:', responseData);
         setSubmitStatus('success');
         setTimeout(() => {
           setShowSubmitModal(false);
           navigation.goBack();
         }, 2000);
       } else {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to submit report');
+        const errorText = await response.text();
+        console.error('❌ Submit failed:', errorText);
+        throw new Error(errorText || 'Failed to submit report');
       }
     } catch (error) {
       console.error('Submit error:', error);
@@ -420,8 +606,18 @@ const ReportPollutionScreen = () => {
                       )}
                       
                       {aiScanStatus === 'success' && (
-                        <View className="absolute bottom-2 left-2 bg-green-500 rounded-full px-3 py-1">
-                          <Text className="text-white text-xs">✓ AI Verified</Text>
+                        <View className="absolute bottom-2 left-2">
+                          {(() => {
+                            const waterValidation = validateWaterPresence();
+                            const hasWater = waterValidation.hasWater;
+                            return (
+                              <View className={`rounded-full px-3 py-1 ${hasWater ? 'bg-green-500' : 'bg-orange-500'}`}>
+                                <Text className="text-white text-xs">
+                                  {hasWater ? '✓ Water Detected' : '⚠️ No Water'}
+                                </Text>
+                              </View>
+                            );
+                          })()}
                         </View>
                       )}
                     </View>
@@ -441,73 +637,113 @@ const ReportPollutionScreen = () => {
                   )}
                 </View>
 
-                {/* Location Status */}
+                {/* Location */}
                 <View>
                   <Text className="text-sm font-medium text-gray-700 mb-2">
                     Location *
                   </Text>
                   
                   {verificationStatus === 'verifying' && (
-                    <View className="flex-row items-center p-3 bg-blue-50 rounded-lg">
+                    <View className="flex-row items-center p-3 bg-blue-50 rounded-lg mb-3">
                       <ActivityIndicator size="small" color="#3B82F6" />
                       <Text className="ml-2 text-blue-700">Getting location...</Text>
                     </View>
                   )}
                   
-                  {verificationStatus === 'success' && (
-                    <View className="flex-row items-center p-3 bg-green-50 rounded-lg">
+                  {verificationStatus === 'success' && formData.address && (
+                    <View className="flex-row items-center p-3 bg-green-50 rounded-lg mb-3">
                       <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-                      <Text className="ml-2 text-green-700 flex-1">
-                        {formData.address || `${formData.latitude}, ${formData.longitude}`}
-                      </Text>
+                      <View className="ml-2 flex-1">
+                        <Text className="text-green-700 font-medium">
+                          {formData.address}
+                        </Text>
+                        {formData.latitude && formData.longitude && (
+                          <Text className="text-green-600 text-xs mt-1">
+                            {formatCoordinates(parseFloat(formData.latitude), parseFloat(formData.longitude))}
+                          </Text>
+                        )}
+                      </View>
                     </View>
                   )}
                   
-                  {(verificationStatus === 'failed' || showLocationFields) && (
-                    <>
-                      <View className="relative mb-3">
-                        <View className="absolute left-3 top-3 z-10">
-                          <Ionicons name="location" size={20} color="#9CA3AF" />
-                        </View>
+                  {/* OpenStreetMap Address Search */}
+                  <View className="mb-3">
+                    <Text className="text-xs text-gray-500 mb-2">
+                      Search for address or location:
+                    </Text>
+                    <OpenStreetMapSearchableSelect
+                      value={formData.address}
+                      onValueChange={handleLocationSelect}
+                      onCoordinatesChange={handleCoordinatesChange}
+                      placeholder="Search for address, city, or landmark..."
+                      className="w-full"
+                    />
+                  </View>
+                  
+                  {/* Current Location Button */}
+                  <TouchableOpacity
+                    className="bg-blue-500 rounded-lg py-3 px-4 flex-row items-center justify-center mb-3"
+                    onPress={handleGetCurrentLocation}
+                    disabled={verificationStatus === 'verifying'}
+                  >
+                    <Ionicons 
+                      name="location" 
+                      size={16} 
+                      color="white" 
+                    />
+                    <Text className="text-white font-medium ml-2">
+                      Use Current Location
+                    </Text>
+                  </TouchableOpacity>
+                  
+                  {/* Manual Coordinates Input */}
+                  <View>
+                    <Text className="text-xs text-gray-500 mb-2">
+                      Or enter coordinates manually:
+                    </Text>
+                    <View className="flex-row space-x-2">
+                      <View className="flex-1">
+                        <Text className="text-xs text-gray-600 mb-1">Latitude</Text>
                         <TextInput
-                          placeholder="Enter address"
-                          value={formData.address}
-                          onChangeText={(text) =>
-                            setFormData({ ...formData, address: text })
-                          }
-                          className="border border-gray-300 rounded-lg px-10 py-3 text-gray-900 bg-white"
-                        />
-                      </View>
-                      
-                      <View className="flex-row space-x-2">
-                        <TextInput
-                          placeholder="Latitude"
+                          placeholder="14.5995"
                           value={formData.latitude}
-                          onChangeText={(text) =>
-                            setFormData({ ...formData, latitude: text })
-                          }
-                          className="flex-1 border border-gray-300 rounded-lg px-3 py-3 text-gray-900 bg-white"
-                          keyboardType="numeric"
-                        />
-                        <TextInput
-                          placeholder="Longitude"
-                          value={formData.longitude}
-                          onChangeText={(text) =>
-                            setFormData({ ...formData, longitude: text })
-                          }
-                          className="flex-1 border border-gray-300 rounded-lg px-3 py-3 text-gray-900 bg-white"
+                          onChangeText={(text) => {
+                            setFormData({ ...formData, latitude: text });
+                            // Validate coordinates when both are provided
+                            if (text && formData.longitude) {
+                              const lat = parseFloat(text);
+                              const lng = parseFloat(formData.longitude);
+                              if (validateCoordinates(lat, lng)) {
+                                setVerificationStatus('success');
+                              }
+                            }
+                          }}
+                          className="border border-gray-300 rounded-lg px-3 py-2 text-gray-900 bg-white text-sm"
                           keyboardType="numeric"
                         />
                       </View>
-                      
-                      <TouchableOpacity
-                        className="mt-2 bg-blue-500 rounded-lg py-2 px-4 self-start"
-                        onPress={getCurrentLocation}
-                      >
-                        <Text className="text-white text-sm">Use Current Location</Text>
-                      </TouchableOpacity>
-                    </>
-                  )}
+                      <View className="flex-1">
+                        <Text className="text-xs text-gray-600 mb-1">Longitude</Text>
+                        <TextInput
+                          placeholder="121.0008"
+                          value={formData.longitude}
+                          onChangeText={(text) => {
+                            setFormData({ ...formData, longitude: text });
+                            // Validate coordinates when both are provided
+                            if (formData.latitude && text) {
+                              const lat = parseFloat(formData.latitude);
+                              const lng = parseFloat(text);
+                              if (validateCoordinates(lat, lng)) {
+                                setVerificationStatus('success');
+                              }
+                            }
+                          }}
+                          className="border border-gray-300 rounded-lg px-3 py-2 text-gray-900 bg-white text-sm"
+                          keyboardType="numeric"
+                        />
+                      </View>
+                    </View>
+                  </View>
                 </View>
 
                 {/* Pollution Type */}
@@ -552,15 +788,26 @@ const ReportPollutionScreen = () => {
                       const isSelected = formData.severityByUser === level;
                       const getSeverityColor = (lvl: string) => {
                         switch (lvl) {
-                          case "Low": return "#22c55e";
-                          case "Medium": return "#eab308";
-                          case "High": return "#f97316";
-                          case "Critical": return "#ef4444";
+                          case "low": return "#22c55e";
+                          case "medium": return "#eab308";
+                          case "high": return "#f97316";
+                          case "critical": return "#ef4444";
                           default: return "#6B7280";
                         }
                       };
                       
+                      const getSeverityLabel = (lvl: string) => {
+                        switch (lvl) {
+                          case "low": return "Low";
+                          case "medium": return "Medium";
+                          case "high": return "High";
+                          case "critical": return "Critical";
+                          default: return lvl;
+                        }
+                      };
+                      
                       const color = getSeverityColor(level);
+                      const label = getSeverityLabel(level);
                       
                       return (
                         <TouchableOpacity
@@ -585,7 +832,7 @@ const ReportPollutionScreen = () => {
                                 : "text-gray-700"
                             }`}
                           >
-                            {level}
+                            {label}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -610,6 +857,19 @@ const ReportPollutionScreen = () => {
                     className="border border-gray-300 rounded-lg p-3 text-gray-900 bg-white"
                   />
                 </View>
+
+                {/* Water Detection Warning */}
+                {aiResults && !validateWaterPresence().hasWater && (
+                  <View className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                    <View className="flex-row items-center mb-2">
+                      <Ionicons name="warning" size={20} color="#f97316" />
+                      <Text className="text-orange-700 font-medium ml-2">No Water Bodies Detected</Text>
+                    </View>
+                    <Text className="text-orange-600 text-sm">
+                      AI analysis did not detect any water bodies in your image. Water pollution reports should contain visible water sources (rivers, lakes, oceans, etc.). Consider retaking the photo or you may proceed but your report may be rejected.
+                    </Text>
+                  </View>
+                )}
 
                 {/* Submit Button */}
                 <TouchableOpacity
@@ -639,11 +899,13 @@ const ReportPollutionScreen = () => {
                     />
                     <View className="ml-3 flex-1">
                       <Text className="text-sm font-medium text-blue-900 mb-1">
-                        AI Verification
+                        AI Verification & Location
                       </Text>
                       <Text className="text-xs text-blue-700">
-                        Your photo will be analyzed using AI to verify pollution
-                        type and severity. This helps ensure report accuracy.
+                        • Photos are analyzed using AI to verify pollution type and severity{'\n'}
+                        • Location is automatically detected from camera photos{'\n'}
+                        • You can search for addresses using OpenStreetMap{'\n'}
+                        • All reports help improve water quality monitoring
                       </Text>
                     </View>
                   </View>

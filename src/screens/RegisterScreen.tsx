@@ -11,6 +11,7 @@ import {
   CardTitle,
   CardContent,
 } from "../components/ui/Card";
+import { SearchableLocationSelect } from "../components/ui/SearchableLocationSelect";
 import Navigation from "../components/Navigation";
 import { API_ENDPOINTS, apiRequest } from "../config/api";
 
@@ -32,10 +33,10 @@ const RegisterScreen = () => {
   const [error, setError] = useState("");
 
   const roles = [
-    { value: "volunteer", label: "Volunteer" },
-    { value: "ngo", label: "NGO Member" },
-    { value: "lgu", label: "LGU Official" },
-    { value: "researcher", label: "Researcher" },
+    { value: "volunteer", label: "Volunteer", description: "Individual community volunteer" },
+    { value: "ngo", label: "NGO Member", description: "Non-governmental organization representative" },
+    { value: "lgu", label: "LGU Official", description: "Local government unit official" },
+    { value: "researcher", label: "Researcher", description: "Academic or environmental researcher" },
   ];
 
   const shouldShowOrganizationFields = (role: string) => {
@@ -67,6 +68,11 @@ const RegisterScreen = () => {
     // Additional validation for organization fields
     if (shouldShowOrganizationFields(formData.role) && !formData.organization) {
       setError("Organization name is required for this role.");
+      return;
+    }
+
+    if (shouldShowOrganizationFields(formData.role) && !formData.areaOfResponsibility) {
+      setError("Area of responsibility is required for NGOs and LGUs.");
       return;
     }
 
@@ -292,24 +298,36 @@ const RegisterScreen = () => {
                       key={role.value}
                       onPress={() => setFormData({ ...formData, role: role.value })}
                       disabled={isLoading}
-                      className={`border rounded-lg px-4 py-3 flex-row items-center ${
+                      className={`border rounded-lg px-4 py-3 ${
                         formData.role === role.value
                           ? 'border-waterbase-500 bg-waterbase-50'
                           : 'border-gray-300 bg-white'
                       }`}
                     >
-                      <View className={`w-5 h-5 rounded-full border-2 mr-3 ${
-                        formData.role === role.value
-                          ? 'border-waterbase-500 bg-waterbase-500'
-                          : 'border-gray-300'
-                      }`}>
-                        {formData.role === role.value && (
-                          <View className="w-2 h-2 bg-white rounded-full m-auto mt-0.5" />
-                        )}
+                      <View className="flex-row items-center">
+                        <View className={`w-5 h-5 rounded-full border-2 mr-3 ${
+                          formData.role === role.value
+                            ? 'border-waterbase-500 bg-waterbase-500'
+                            : 'border-gray-300'
+                        }`}>
+                          {formData.role === role.value && (
+                            <View className="w-2 h-2 bg-white rounded-full m-auto mt-0.5" />
+                          )}
+                        </View>
+                        <View className="flex-1">
+                          <Text className="text-waterbase-900 text-base font-medium">
+                            {role.label}
+                          </Text>
+                          <Text className="text-waterbase-600 text-sm mt-1">
+                            {role.description}
+                          </Text>
+                          {shouldShowOrganizationFields(role.value) && (
+                            <Text className="text-waterbase-500 text-xs mt-1">
+                              • Requires organization and area of responsibility
+                            </Text>
+                          )}
+                        </View>
                       </View>
-                      <Text className="text-waterbase-900 text-base">
-                        {role.label}
-                      </Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -332,16 +350,17 @@ const RegisterScreen = () => {
 
                     <View className="mb-4">
                       <Text className="text-sm font-medium text-waterbase-700 mb-2">
-                        Area of Responsibility
+                        Area of Responsibility *
                       </Text>
-                      <TextInput
+                      <SearchableLocationSelect
                         value={formData.areaOfResponsibility}
-                        onChangeText={(text) => setFormData({ ...formData, areaOfResponsibility: text })}
-                        placeholder="Enter area of responsibility"
-                        editable={!isLoading}
-                        className="border border-gray-300 rounded-lg px-3 py-3 text-waterbase-900 bg-white"
-                        style={{ fontSize: 16, lineHeight: 20 }}
+                        onValueChange={(value) => setFormData({ ...formData, areaOfResponsibility: value })}
+                        placeholder="Search for your area of responsibility..."
+                        className="w-full"
                       />
+                      <Text className="text-xs text-waterbase-500 mt-1">
+                        Search for the region, province, city, municipality, or barangay you are responsible for
+                      </Text>
                     </View>
                   </>
                 )}
