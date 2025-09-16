@@ -478,13 +478,13 @@ const ReportPollutionScreen = () => {
         submitFormData.append('severityByAI', severityByAI);
         submitFormData.append('ai_confidence', aiConfidence.toString());
         submitFormData.append('severityPercentage', pollutionPercentage.toString());
-        submitFormData.append('ai_verified', hasValidPollution ? 'true' : 'false');
+        submitFormData.append('ai_verified', hasValidPollution ? '1' : '0');
       } else {
         // Default AI values when no AI analysis is available
         submitFormData.append('severityByAI', formData.severityByUser || 'low');
         submitFormData.append('ai_confidence', '0');
         submitFormData.append('severityPercentage', '0');
-        submitFormData.append('ai_verified', 'false');
+        submitFormData.append('ai_verified', '0');
       }
 
       // Add image

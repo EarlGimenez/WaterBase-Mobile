@@ -3,7 +3,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const isDev = __DEV__;
-const GIMENEZ_LAPTOP_IP = "192.168.1.7";
+const GIMENEZ_LAPTOP_IP = "172.18.18.217";
 // Your computer's IP address from ipconfig: 192.168.0.224
 const API_CONFIG = {
   BASE_URL: isDev 
