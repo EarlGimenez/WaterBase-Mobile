@@ -799,7 +799,7 @@ const ReportPollutionScreen = () => {
                       const getSeverityLabel = (lvl: string) => {
                         switch (lvl) {
                           case "low": return "Low";
-                          case "medium": return "Medium";
+                          case "medium": return "Med";
                           case "high": return "High";
                           case "critical": return "Critical";
                           default: return lvl;

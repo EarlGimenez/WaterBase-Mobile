@@ -9,7 +9,7 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   return (
     <View className="flex-1">
-      <View className="flex-1" style={{ paddingBottom: 55 }}>
+      <View className="flex-1" style={{ paddingBottom: 75 }}>
         {children}
       </View>
       <Footer />

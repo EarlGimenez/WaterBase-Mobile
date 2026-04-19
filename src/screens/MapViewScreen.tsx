@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -24,10 +24,10 @@ import { API_ENDPOINTS, apiRequest } from "../config/api";
 import LeafletMap from "../components/LeafletMap";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
-const BOTTOM_SHEET_MIN_HEIGHT = 140;
+const BOTTOM_SHEET_MIN_HEIGHT = 64;
 const BOTTOM_SHEET_MAX_HEIGHT = SCREEN_HEIGHT * 0.75;
 const FOOTER_HEIGHT = 10; // Lower to stick properly to footer
-const GAP_HEIGHT = 25; // Increased gap for better separation
+const SNAP_THRESHOLD = BOTTOM_SHEET_MIN_HEIGHT + (BOTTOM_SHEET_MAX_HEIGHT - BOTTOM_SHEET_MIN_HEIGHT) * 0.45;
 
 // Types
 interface Report {
@@ -238,50 +238,67 @@ const MapViewScreen = () => {
   });
   
   // Bottom sheet animation
-  const bottomSheetHeight = new Animated.Value(BOTTOM_SHEET_MIN_HEIGHT);
+  const bottomSheetHeight = useRef(new Animated.Value(BOTTOM_SHEET_MIN_HEIGHT)).current;
+  const dragStartHeight = useRef(BOTTOM_SHEET_MIN_HEIGHT);
   const [isBottomSheetExpanded, setIsBottomSheetExpanded] = useState(false);
+
+  const animateBottomSheet = (toValue: number, expanded: boolean) => {
+    setIsBottomSheetExpanded(expanded);
+    Animated.spring(bottomSheetHeight, {
+      toValue,
+      useNativeDriver: false,
+      tension: 70,
+      friction: 12,
+    }).start();
+  };
+
+  const snapBottomSheet = (gestureState: any) => {
+    const projectedHeight = BOTTOM_SHEET_MIN_HEIGHT + Math.max(0, -gestureState.dy);
+    const shouldExpand =
+      gestureState.vy < -0.35 ||
+      projectedHeight >= SNAP_THRESHOLD ||
+      (gestureState.dy < 0 && Math.abs(gestureState.dy) > 30);
+
+    animateBottomSheet(
+      shouldExpand ? BOTTOM_SHEET_MAX_HEIGHT : BOTTOM_SHEET_MIN_HEIGHT,
+      shouldExpand
+    );
+  };
 
   // Pan responder for bottom sheet
   const panResponder = PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_, gestureState) => {
+      return Math.abs(gestureState.dy) > 6 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+    },
+    onPanResponderGrant: () => {
+      dragStartHeight.current = isBottomSheetExpanded ? BOTTOM_SHEET_MAX_HEIGHT : BOTTOM_SHEET_MIN_HEIGHT;
+      bottomSheetHeight.stopAnimation((value: number) => {
+        dragStartHeight.current = value;
+      });
+    },
     onPanResponderMove: (evt, gestureState) => {
-      const newHeight = BOTTOM_SHEET_MIN_HEIGHT + Math.max(0, -gestureState.dy);
-      if (newHeight <= BOTTOM_SHEET_MAX_HEIGHT) {
-        bottomSheetHeight.setValue(newHeight);
-      }
+      const nextHeight = Math.min(
+        BOTTOM_SHEET_MAX_HEIGHT,
+        Math.max(BOTTOM_SHEET_MIN_HEIGHT, dragStartHeight.current - gestureState.dy)
+      );
+
+      bottomSheetHeight.setValue(nextHeight);
     },
     onPanResponderRelease: (evt, gestureState) => {
-      const shouldExpand = gestureState.dy < -50 || gestureState.vy < -0.5;
-      const shouldCollapse = gestureState.dy > 50 || gestureState.vy > 0.5;
-
-      if (shouldExpand && !isBottomSheetExpanded) {
-        expandBottomSheet();
-      } else if (shouldCollapse && isBottomSheetExpanded) {
-        collapseBottomSheet();
-      } else {
-        Animated.spring(bottomSheetHeight, {
-          toValue: isBottomSheetExpanded ? BOTTOM_SHEET_MAX_HEIGHT : BOTTOM_SHEET_MIN_HEIGHT,
-          useNativeDriver: false,
-        }).start();
-      }
+      snapBottomSheet(gestureState);
+    },
+    onPanResponderTerminate: (_, gestureState) => {
+      snapBottomSheet(gestureState);
     },
   });
 
   const expandBottomSheet = () => {
-    setIsBottomSheetExpanded(true);
-    Animated.spring(bottomSheetHeight, {
-      toValue: BOTTOM_SHEET_MAX_HEIGHT,
-      useNativeDriver: false,
-    }).start();
+    animateBottomSheet(BOTTOM_SHEET_MAX_HEIGHT, true);
   };
 
   const collapseBottomSheet = () => {
-    setIsBottomSheetExpanded(false);
-    Animated.spring(bottomSheetHeight, {
-      toValue: BOTTOM_SHEET_MIN_HEIGHT,
-      useNativeDriver: false,
-    }).start();
+    animateBottomSheet(BOTTOM_SHEET_MIN_HEIGHT, false);
   };
 
   // Filter reports based on current filters
@@ -396,368 +413,353 @@ const MapViewScreen = () => {
           </TouchableOpacity>
         </View>
 
-        {/* White Gap Area - Sticks to footer */}
-        <View 
-          className="absolute left-0 right-0 bg-white"
-          style={{
-            bottom: FOOTER_HEIGHT - 10, // Slightly overlap for better sticking
-            height: GAP_HEIGHT + 10,
-          }}
-        />
-
         {/* Bottom Sheet */}
         <Animated.View
-          className="absolute left-0 right-0 bg-white rounded-t-3xl shadow-2xl"
+          className="absolute left-0 right-0 rounded-t-3xl shadow-2xl overflow-hidden"
           style={{
-            bottom: FOOTER_HEIGHT + GAP_HEIGHT,
+            bottom: FOOTER_HEIGHT,
             height: bottomSheetHeight,
+            backgroundColor: isBottomSheetExpanded ? "#ffffff" : "rgba(255,255,255,0.94)",
           }}
         >
           {/* Bottom Sheet Handle */}
           <View
-            className="w-full items-center py-4"
+            className="w-full items-center pt-2 pb-1 border-b border-gray-100"
+            style={{ backgroundColor: isBottomSheetExpanded ? "#ffffff" : "rgba(255,255,255,0.92)" }}
             {...panResponder.panHandlers}
           >
-            <View className="w-12 h-1 bg-gray-300 rounded-full" />
-            <Text className="text-gray-600 text-sm mt-2">
+            <View className="w-12 h-1 bg-gray-200 rounded-full" />
+            <Text className="text-gray-500 text-xs mt-2">
               {isBottomSheetExpanded ? "Swipe down to collapse" : "Swipe up for details"}
             </Text>
           </View>
 
           {/* Bottom Sheet Content */}
-          <ScrollView className="flex-1 px-4" showsVerticalScrollIndicator={false}>
-            {/* Controls Section - Always Visible */}
-            <View className="mb-4">
-              {/* Mode Toggle */}
-              <View className="flex-row bg-gray-100 rounded-lg mb-4 overflow-hidden">
-                <TouchableOpacity
-                  className={`flex-1 py-3 px-4 ${viewMode === "reports" ? "bg-waterbase-500" : "bg-transparent"}`}
-                  onPress={() => setViewMode("reports")}
-                >
-                  <Text className={`text-center text-sm font-medium ${viewMode === "reports" ? "text-white" : "text-gray-700"}`}>
-                    Reports
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  className={`flex-1 py-3 px-4 ${viewMode === "research" ? "bg-waterbase-500" : "bg-transparent"}`}
-                  onPress={() => setViewMode("research")}
-                >
-                  <Text className={`text-center text-sm font-medium ${viewMode === "research" ? "text-white" : "text-gray-700"}`}>
-                    Research
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Search Bar */}
-              <View className="relative mb-4">
-                <Ionicons
-                  name="search"
-                  size={20}
-                  color="#9CA3AF"
-                  style={{ position: "absolute", left: 12, top: 12, zIndex: 1 }}
-                />
-                <TextInput
-                  placeholder="Search locations, descriptions..."
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  className="bg-gray-50 border border-gray-200 rounded-lg pl-12 pr-4 py-3 text-gray-900"
-                />
-              </View>
-
-              {/* Filter and Layer Controls */}
-              <View className="flex-row space-x-3 mb-4">
-                <TouchableOpacity
-                  className="flex-1 bg-waterbase-500 py-2 px-4 rounded-lg flex-row items-center justify-center"
-                  onPress={() => setShowFilters(true)}
-                >
-                  <Ionicons name="filter" size={16} color="white" style={{ marginRight: 8 }} />
-                  <Text className="text-white text-sm font-medium">Filters</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Legend Section */}
-            <Card className="mb-4">
-              <CardContent className="p-4">
-                <Text className="text-sm font-bold text-gray-800 mb-3">Map Legend</Text>
-                
-                {viewMode === "reports" ? (
-                  <View className="space-y-2">
-                    <View className="flex-row items-center">
-                      <View className="w-4 h-4 rounded-full bg-red-500 mr-3" />
-                      <Text className="text-sm text-gray-600 flex-1">Critical Pollution</Text>
-                    </View>
-                    <View className="flex-row items-center">
-                      <View className="w-4 h-4 rounded-full bg-orange-500 mr-3" />
-                      <Text className="text-sm text-gray-600 flex-1">High Pollution</Text>
-                    </View>
-                    <View className="flex-row items-center">
-                      <View className="w-4 h-4 rounded-full bg-yellow-500 mr-3" />
-                      <Text className="text-sm text-gray-600 flex-1">Medium Pollution</Text>
-                    </View>
-                    <View className="flex-row items-center">
-                      <View className="w-4 h-4 rounded-full bg-green-500 mr-3" />
-                      <Text className="text-sm text-gray-600 flex-1">Low Pollution</Text>
-                    </View>
-                  </View>
-                ) : (
-                  <View className="space-y-2">
-                    <View className="flex-row items-center">
-                      <View className="w-4 h-4 rounded-full bg-green-500 mr-3" />
-                      <Text className="text-sm text-gray-600 flex-1">Good Water Quality (80+)</Text>
-                    </View>
-                    <View className="flex-row items-center">
-                      <View className="w-4 h-4 rounded-full bg-yellow-500 mr-3" />
-                      <Text className="text-sm text-gray-600 flex-1">Fair Water Quality (60-79)</Text>
-                    </View>
-                    <View className="flex-row items-center">
-                      <View className="w-4 h-4 rounded-full bg-orange-500 mr-3" />
-                      <Text className="text-sm text-gray-600 flex-1">Poor Water Quality (40-59)</Text>
-                    </View>
-                    <View className="flex-row items-center">
-                      <View className="w-4 h-4 rounded-full bg-red-500 mr-3" />
-                      <Text className="text-sm text-gray-600 flex-1">Very Poor Quality (&lt;40)</Text>
-                    </View>
-                  </View>
-                )}
-
-                {/* Layer Controls */}
-                <View className="mt-4 pt-3 border-t border-gray-200">
-                  <Text className="text-sm font-bold text-gray-800 mb-3">Layer Controls</Text>
-                  <View className="space-y-2">
-                    <View className="flex-row items-center justify-between">
-                      <Text className="text-sm text-gray-600">Show Pollution Reports</Text>
-                      <Switch
-                        value={showLayers.pollution}
-                        onValueChange={(value) => setShowLayers(prev => ({ ...prev, pollution: value }))}
-                      />
-                    </View>
-                    <View className="flex-row items-center justify-between">
-                      <Text className="text-sm text-gray-600">Show Sensor Stations</Text>
-                      <Switch
-                        value={showLayers.sensors}
-                        onValueChange={(value) => setShowLayers(prev => ({ ...prev, sensors: value }))}
-                      />
-                    </View>
-                  </View>
-                </View>
-              </CardContent>
-            </Card>
-            {viewMode === "reports" ? (
-              <View>
-                {selectedReport ? (
-                  // Selected Report Details
-                  <Card className="mb-4">
-                    <CardHeader>
-                      <CardTitle className="text-lg">{selectedReport.title || "Pollution Report"}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <Text className="text-gray-600 mb-2">{selectedReport.content}</Text>
-                      <Text className="text-sm text-gray-500 mb-2">📍 {selectedReport.address}</Text>
-                      <View className="flex-row items-center space-x-4 mb-3">
-                        <View className="flex-row items-center">
-                          <View 
-                            className="w-3 h-3 rounded-full mr-2"
-                            style={{ backgroundColor: getSeverityColor(selectedReport.severityByUser) }}
-                          />
-                          <Text className="text-sm text-gray-600">
-                            {selectedReport.severityByUser} severity
-                          </Text>
-                        </View>
-                        <Text className="text-sm text-gray-500">
-                          {new Date(selectedReport.created_at).toLocaleDateString()}
-                        </Text>
-                      </View>
-                      <Text className="text-sm text-gray-600">Type: {selectedReport.pollutionType}</Text>
-                      <Text className="text-sm text-gray-600">Status: {selectedReport.status}</Text>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  // Reports List and Distribution
-                  <View>
-                    {isBottomSheetExpanded && (
-                      <View className="mb-4">
-                        <Text className="text-lg font-bold text-gray-800 mb-3">Pollution Distribution</Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                          <View className="flex-row space-x-3">
-                            {getDistributionData().map((item, index) => (
-                              <Card key={index} className="w-24">
-                                <CardContent className="items-center p-3">
-                                  <View 
-                                    className="w-8 h-8 rounded-full mb-2"
-                                    style={{ backgroundColor: item.color }}
-                                  />
-                                  <Text className="text-xs text-gray-600 text-center mb-1">
-                                    {item.pollutionType}
-                                  </Text>
-                                  <Text className="text-sm font-bold text-gray-800">{item.count}</Text>
-                                  <Text className="text-xs text-gray-500">{item.percentage}%</Text>
-                                </CardContent>
-                              </Card>
-                            ))}
-                          </View>
-                        </ScrollView>
-                      </View>
-                    )}
-
-                    <Text className="text-lg font-bold text-gray-800 mb-3">Recent Reports</Text>
-                    <FlatList
-                      data={filteredReports.slice(0, 10)}
-                      keyExtractor={(item) => item.id.toString()}
-                      renderItem={({ item }) => (
-                        <TouchableOpacity
-                          onPress={() => {
-                            setSelectedReport(item);
-                          }}
-                        >
-                          <Card className="mb-3">
-                            <CardContent className="p-3">
-                              <View className="flex-row items-center justify-between">
-                                <View className="flex-1">
-                                  <Text className="font-medium text-gray-800">{item.title || "Pollution Report"}</Text>
-                                  <Text className="text-sm text-gray-600 mt-1">{item.address}</Text>
-                                  <Text className="text-xs text-gray-500 mt-1">
-                                    {new Date(item.created_at).toLocaleDateString()}
-                                  </Text>
-                                </View>
-                                <View className="items-center">
-                                  <View 
-                                    className="w-6 h-6 rounded-full mb-1"
-                                    style={{ backgroundColor: getSeverityColor(item.severityByUser) }}
-                                  />
-                                  <Text className="text-xs text-gray-600">{item.severityByUser}</Text>
-                                </View>
-                              </View>
-                            </CardContent>
-                          </Card>
-                        </TouchableOpacity>
-                      )}
-                      scrollEnabled={false}
-                    />
-                  </View>
-                )}
-              </View>
-            ) : (
-              // Research Mode Content
-              <View>
-                {/* Research Mode Toggle */}
+          {isBottomSheetExpanded ? (
+            <ScrollView className="flex-1 px-4" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+              {/* Controls Section - Always Visible */}
+              <View className="mb-4">
+                {/* Mode Toggle */}
                 <View className="flex-row bg-gray-100 rounded-lg mb-4 overflow-hidden">
                   <TouchableOpacity
-                    className={`flex-1 py-2 px-3 ${researchMode === "spatial" ? "bg-waterbase-500" : "bg-transparent"}`}
-                    onPress={() => setResearchMode("spatial")}
+                    className={`flex-1 py-3 px-4 ${viewMode === "reports" ? "bg-waterbase-500" : "bg-transparent"}`}
+                    onPress={() => setViewMode("reports")}
                   >
-                    <Text className={`text-center text-sm font-medium ${researchMode === "spatial" ? "text-white" : "text-gray-700"}`}>
-                      Spatial Data
+                    <Text className={`text-center text-sm font-medium ${viewMode === "reports" ? "text-white" : "text-gray-700"}`}>
+                      Reports
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    className={`flex-1 py-2 px-3 ${researchMode === "temporal" ? "bg-waterbase-500" : "bg-transparent"}`}
-                    onPress={() => setResearchMode("temporal")}
+                    className={`flex-1 py-3 px-4 ${viewMode === "research" ? "bg-waterbase-500" : "bg-transparent"}`}
+                    onPress={() => setViewMode("research")}
                   >
-                    <Text className={`text-center text-sm font-medium ${researchMode === "temporal" ? "text-white" : "text-gray-700"}`}>
-                      Temporal Data
+                    <Text className={`text-center text-sm font-medium ${viewMode === "research" ? "text-white" : "text-gray-700"}`}>
+                      Research
                     </Text>
                   </TouchableOpacity>
                 </View>
 
-                {researchMode === "spatial" ? (
-                  <View>
-                    {selectedSensor ? (
-                      // Selected Sensor Details
-                      <Card className="mb-4">
-                        <CardHeader>
-                          <CardTitle className="text-lg">{selectedSensor.name}</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <View className="mb-4">
-                            <Text className="text-sm text-gray-600 mb-2">Water Quality Index</Text>
-                            <View className="flex-row items-center">
-                              <View 
-                                className="w-6 h-6 rounded-full mr-3"
-                                style={{ backgroundColor: getWQIColor(selectedSensor.waterQualityIndex) }}
-                              />
-                              <Text className="text-2xl font-bold text-gray-800">{selectedSensor.waterQualityIndex}</Text>
-                              <Text className="text-sm text-gray-600 ml-2">
-                                ({getWQIStatus(selectedSensor.waterQualityIndex)})
-                              </Text>
-                            </View>
-                          </View>
+                {/* Search Bar */}
+                <View className="relative mb-4">
+                  <Ionicons
+                    name="search"
+                    size={20}
+                    color="#9CA3AF"
+                    style={{ position: "absolute", left: 12, top: 12, zIndex: 1 }}
+                  />
+                  <TextInput
+                    placeholder="Search locations, descriptions..."
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    className="bg-gray-50 border border-gray-200 rounded-lg pl-12 pr-4 py-3 text-gray-900"
+                  />
+                </View>
 
-                          <Text className="text-sm font-medium text-gray-800 mb-2">Parameters</Text>
-                          <View className="space-y-2">
-                            <Text className="text-sm text-gray-600">🧪 pH: {selectedSensor.parameters.physicochemical.ph}</Text>
-                            <Text className="text-sm text-gray-600">🌡️ Temperature: {selectedSensor.parameters.physicochemical.temperature}°C</Text>
-                            <Text className="text-sm text-gray-600">💨 Dissolved O₂: {selectedSensor.parameters.physicochemical.dissolvedOxygen} mg/L</Text>
-                            <Text className="text-sm text-gray-600">⚗️ COD: {selectedSensor.parameters.organics.cod} mg/L</Text>
-                            <Text className="text-sm text-gray-600">🦠 E.coli: {selectedSensor.parameters.microbial.ecoli} CFU/100mL</Text>
-                          </View>
+                {/* Filter and Layer Controls */}
+                <View className="flex-row space-x-3 mb-4">
+                  <TouchableOpacity
+                    className="flex-1 bg-waterbase-500 py-2 px-4 rounded-lg flex-row items-center justify-center"
+                    onPress={() => setShowFilters(true)}
+                  >
+                    <Ionicons name="filter" size={16} color="white" style={{ marginRight: 8 }} />
+                    <Text className="text-white text-sm font-medium">Filters</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
 
-                          <Text className="text-xs text-gray-500 mt-3">
-                            Last updated: {new Date(selectedSensor.lastUpdated).toLocaleString()}
-                          </Text>
-                        </CardContent>
-                      </Card>
-                    ) : (
-                      // Sensor Stations List
-                      <View>
-                        <Text className="text-lg font-bold text-gray-800 mb-3">Sensor Stations</Text>
-                        <FlatList
-                          data={mockSensorStations}
-                          keyExtractor={(item) => item.id}
-                          renderItem={({ item }) => (
-                            <TouchableOpacity
-                              onPress={() => setSelectedSensor(item)}
-                            >
-                              <Card className="mb-3">
-                                <CardContent className="p-3">
-                                  <View className="flex-row items-center justify-between">
-                                    <View className="flex-1">
-                                      <Text className="font-medium text-gray-800">{item.name}</Text>
-                                      <Text className="text-sm text-gray-600 mt-1">
-                                        WQI: {item.waterQualityIndex} ({getWQIStatus(item.waterQualityIndex)})
-                                      </Text>
-                                    </View>
-                                    <View 
-                                      className="w-8 h-8 rounded-full items-center justify-center"
-                                      style={{ backgroundColor: getWQIColor(item.waterQualityIndex) }}
-                                    >
-                                      <Text className="text-white text-xs font-bold">{item.waterQualityIndex}</Text>
-                                    </View>
-                                  </View>
-                                </CardContent>
-                              </Card>
-                            </TouchableOpacity>
-                          )}
-                          scrollEnabled={false}
+              {/* Legend Section */}
+              <Card className="mb-4">
+                <CardContent className="p-4">
+                  <Text className="text-sm font-bold text-gray-800 mb-3">Map Legend</Text>
+                  
+                  {viewMode === "reports" ? (
+                    <View className="space-y-2">
+                      <View className="flex-row items-center">
+                        <View className="w-4 h-4 rounded-full bg-red-500 mr-3" />
+                        <Text className="text-sm text-gray-600 flex-1">Critical Pollution</Text>
+                      </View>
+                      <View className="flex-row items-center">
+                        <View className="w-4 h-4 rounded-full bg-orange-500 mr-3" />
+                        <Text className="text-sm text-gray-600 flex-1">High Pollution</Text>
+                      </View>
+                      <View className="flex-row items-center">
+                        <View className="w-4 h-4 rounded-full bg-yellow-500 mr-3" />
+                        <Text className="text-sm text-gray-600 flex-1">Medium Pollution</Text>
+                      </View>
+                      <View className="flex-row items-center">
+                        <View className="w-4 h-4 rounded-full bg-green-500 mr-3" />
+                        <Text className="text-sm text-gray-600 flex-1">Low Pollution</Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <View className="space-y-2">
+                      <View className="flex-row items-center">
+                        <View className="w-4 h-4 rounded-full bg-green-500 mr-3" />
+                        <Text className="text-sm text-gray-600 flex-1">Good Water Quality (80+)</Text>
+                      </View>
+                      <View className="flex-row items-center">
+                        <View className="w-4 h-4 rounded-full bg-yellow-500 mr-3" />
+                        <Text className="text-sm text-gray-600 flex-1">Fair Water Quality (60-79)</Text>
+                      </View>
+                      <View className="flex-row items-center">
+                        <View className="w-4 h-4 rounded-full bg-orange-500 mr-3" />
+                        <Text className="text-sm text-gray-600 flex-1">Poor Water Quality (40-59)</Text>
+                      </View>
+                      <View className="flex-row items-center">
+                        <View className="w-4 h-4 rounded-full bg-red-500 mr-3" />
+                        <Text className="text-sm text-gray-600 flex-1">Very Poor Quality (&lt;40)</Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Layer Controls */}
+                  <View className="mt-4 pt-3 border-t border-gray-200">
+                    <Text className="text-sm font-bold text-gray-800 mb-3">Layer Controls</Text>
+                    <View className="space-y-2">
+                      <View className="flex-row items-center justify-between">
+                        <Text className="text-sm text-gray-600">Show Pollution Reports</Text>
+                        <Switch
+                          value={showLayers.pollution}
+                          onValueChange={(value) => setShowLayers(prev => ({ ...prev, pollution: value }))}
                         />
                       </View>
-                    )}
-                  </View>
-                ) : (
-                  // Temporal Data
-                  <View>
-                    {/* Temporal Data Type Toggle */}
-                    <View className="flex-row bg-gray-100 rounded-lg mb-4 overflow-hidden">
-                      <TouchableOpacity
-                        className={`flex-1 py-2 px-3 ${temporalDataType === "sensor" ? "bg-waterbase-500" : "bg-transparent"}`}
-                        onPress={() => setTemporalDataType("sensor")}
-                      >
-                        <Text className={`text-center text-sm font-medium ${temporalDataType === "sensor" ? "text-white" : "text-gray-700"}`}>
-                          Sensor Data
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        className={`flex-1 py-2 px-3 ${temporalDataType === "cleanup" ? "bg-waterbase-500" : "bg-transparent"}`}
-                        onPress={() => setTemporalDataType("cleanup")}
-                      >
-                        <Text className={`text-center text-sm font-medium ${temporalDataType === "cleanup" ? "text-white" : "text-gray-700"}`}>
-                          Cleanup Efforts
-                        </Text>
-                      </TouchableOpacity>
+                      <View className="flex-row items-center justify-between">
+                        <Text className="text-sm text-gray-600">Show Sensor Stations</Text>
+                        <Switch
+                          value={showLayers.sensors}
+                          onValueChange={(value) => setShowLayers(prev => ({ ...prev, sensors: value }))}
+                        />
+                      </View>
                     </View>
-
-                    {/* Year Slider */}
+                  </View>
+                </CardContent>
+              </Card>
+              {viewMode === "reports" ? (
+                <View>
+                  {selectedReport ? (
                     <Card className="mb-4">
+                      <CardHeader>
+                        <CardTitle className="text-lg">{selectedReport.title || "Pollution Report"}</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <Text className="text-gray-600 mb-2">{selectedReport.content}</Text>
+                        <Text className="text-sm text-gray-500 mb-2">📍 {selectedReport.address}</Text>
+                        <View className="flex-row items-center space-x-4 mb-3">
+                          <View className="flex-row items-center">
+                            <View 
+                              className="w-3 h-3 rounded-full mr-2"
+                              style={{ backgroundColor: getSeverityColor(selectedReport.severityByUser) }}
+                            />
+                            <Text className="text-sm text-gray-600">
+                              {selectedReport.severityByUser} severity
+                            </Text>
+                          </View>
+                          <Text className="text-sm text-gray-500">
+                            {new Date(selectedReport.created_at).toLocaleDateString()}
+                          </Text>
+                        </View>
+                        <Text className="text-sm text-gray-600">Type: {selectedReport.pollutionType}</Text>
+                        <Text className="text-sm text-gray-600">Status: {selectedReport.status}</Text>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <View>
+                      {isBottomSheetExpanded && (
+                        <View className="mb-4">
+                          <Text className="text-lg font-bold text-gray-800 mb-3">Pollution Distribution</Text>
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                            <View className="flex-row space-x-3">
+                              {getDistributionData().map((item, index) => (
+                                <Card key={index} className="w-24">
+                                  <CardContent className="items-center p-3">
+                                    <View 
+                                      className="w-8 h-8 rounded-full mb-2"
+                                      style={{ backgroundColor: item.color }}
+                                    />
+                                    <Text className="text-xs text-gray-600 text-center mb-1">
+                                      {item.pollutionType}
+                                    </Text>
+                                    <Text className="text-sm font-bold text-gray-800">{item.count}</Text>
+                                    <Text className="text-xs text-gray-500">{item.percentage}%</Text>
+                                  </CardContent>
+                                </Card>
+                              ))}
+                            </View>
+                          </ScrollView>
+                        </View>
+                      )}
+
+                      <Text className="text-lg font-bold text-gray-800 mb-3">Recent Reports</Text>
+                      <FlatList
+                        data={filteredReports.slice(0, 10)}
+                        keyExtractor={(item) => item.id.toString()}
+                        renderItem={({ item }) => (
+                          <TouchableOpacity
+                            onPress={() => {
+                              setSelectedReport(item);
+                            }}
+                          >
+                            <Card className="mb-3">
+                              <CardContent className="p-3">
+                                <View className="flex-row items-center justify-between">
+                                  <View className="flex-1">
+                                    <Text className="font-medium text-gray-800">{item.title || "Pollution Report"}</Text>
+                                    <Text className="text-sm text-gray-600 mt-1">{item.address}</Text>
+                                    <Text className="text-xs text-gray-500 mt-1">
+                                      {new Date(item.created_at).toLocaleDateString()}
+                                    </Text>
+                                  </View>
+                                  <View className="items-center">
+                                    <View 
+                                      className="w-6 h-6 rounded-full mb-1"
+                                      style={{ backgroundColor: getSeverityColor(item.severityByUser) }}
+                                    />
+                                    <Text className="text-xs text-gray-600">{item.severityByUser}</Text>
+                                  </View>
+                                </View>
+                              </CardContent>
+                            </Card>
+                          </TouchableOpacity>
+                        )}
+                        scrollEnabled={false}
+                      />
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <View>
+                  <View className="flex-row bg-gray-100 rounded-lg mb-4 overflow-hidden">
+                    <TouchableOpacity
+                      className={`flex-1 py-2 px-3 ${researchMode === "spatial" ? "bg-waterbase-500" : "bg-transparent"}`}
+                      onPress={() => setResearchMode("spatial")}
+                    >
+                      <Text className={`text-center text-sm font-medium ${researchMode === "spatial" ? "text-white" : "text-gray-700"}`}>
+                        Spatial Data
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      className={`flex-1 py-2 px-3 ${researchMode === "temporal" ? "bg-waterbase-500" : "bg-transparent"}`}
+                      onPress={() => setResearchMode("temporal")}
+                    >
+                      <Text className={`text-center text-sm font-medium ${researchMode === "temporal" ? "text-white" : "text-gray-700"}`}>
+                        Temporal Data
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {researchMode === "spatial" ? (
+                    <View>
+                      {selectedSensor ? (
+                        <Card className="mb-4">
+                          <CardHeader>
+                            <CardTitle className="text-lg">{selectedSensor.name}</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <View className="mb-4">
+                              <Text className="text-sm text-gray-600 mb-2">Water Quality Index</Text>
+                              <View className="flex-row items-center">
+                                <View 
+                                  className="w-6 h-6 rounded-full mr-3"
+                                  style={{ backgroundColor: getWQIColor(selectedSensor.waterQualityIndex) }}
+                                />
+                                <Text className="text-2xl font-bold text-gray-800">{selectedSensor.waterQualityIndex}</Text>
+                                <Text className="text-sm text-gray-600 ml-2">
+                                  ({getWQIStatus(selectedSensor.waterQualityIndex)})
+                                </Text>
+                              </View>
+                            </View>
+
+                            <Text className="text-sm font-medium text-gray-800 mb-2">Parameters</Text>
+                            <View className="space-y-2">
+                              <Text className="text-sm text-gray-600">🧪 pH: {selectedSensor.parameters.physicochemical.ph}</Text>
+                              <Text className="text-sm text-gray-600">🌡️ Temperature: {selectedSensor.parameters.physicochemical.temperature}°C</Text>
+                              <Text className="text-sm text-gray-600">💨 Dissolved O₂: {selectedSensor.parameters.physicochemical.dissolvedOxygen} mg/L</Text>
+                              <Text className="text-sm text-gray-600">⚗️ COD: {selectedSensor.parameters.organics.cod} mg/L</Text>
+                              <Text className="text-sm text-gray-600">🦠 E.coli: {selectedSensor.parameters.microbial.ecoli} CFU/100mL</Text>
+                            </View>
+
+                            <Text className="text-xs text-gray-500 mt-3">
+                              Last updated: {new Date(selectedSensor.lastUpdated).toLocaleString()}
+                            </Text>
+                          </CardContent>
+                        </Card>
+                      ) : (
+                        <View>
+                          <Text className="text-lg font-bold text-gray-800 mb-3">Sensor Stations</Text>
+                          <FlatList
+                            data={mockSensorStations}
+                            keyExtractor={(item) => item.id}
+                            renderItem={({ item }) => (
+                              <TouchableOpacity
+                                onPress={() => setSelectedSensor(item)}
+                              >
+                                <Card className="mb-3">
+                                  <CardContent className="p-3">
+                                    <View className="flex-row items-center justify-between">
+                                      <View className="flex-1">
+                                        <Text className="font-medium text-gray-800">{item.name}</Text>
+                                        <Text className="text-sm text-gray-600 mt-1">
+                                          WQI: {item.waterQualityIndex} ({getWQIStatus(item.waterQualityIndex)})
+                                        </Text>
+                                      </View>
+                                      <View 
+                                        className="w-8 h-8 rounded-full items-center justify-center"
+                                        style={{ backgroundColor: getWQIColor(item.waterQualityIndex) }}
+                                      >
+                                        <Text className="text-white text-xs font-bold">{item.waterQualityIndex}</Text>
+                                      </View>
+                                    </View>
+                                  </CardContent>
+                                </Card>
+                              </TouchableOpacity>
+                            )}
+                            scrollEnabled={false}
+                          />
+                        </View>
+                      )}
+                    </View>
+                  ) : (
+                    <View>
+                      <View className="flex-row bg-gray-100 rounded-lg mb-4 overflow-hidden">
+                        <TouchableOpacity
+                          className={`flex-1 py-2 px-3 ${temporalDataType === "sensor" ? "bg-waterbase-500" : "bg-transparent"}`}
+                          onPress={() => setTemporalDataType("sensor")}
+                        >
+                          <Text className={`text-center text-sm font-medium ${temporalDataType === "sensor" ? "text-white" : "text-gray-700"}`}>
+                            Sensor Data
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          className={`flex-1 py-2 px-3 ${temporalDataType === "cleanup" ? "bg-waterbase-500" : "bg-transparent"}`}
+                          onPress={() => setTemporalDataType("cleanup")}
+                        >
+                          <Text className={`text-center text-sm font-medium ${temporalDataType === "cleanup" ? "text-white" : "text-gray-700"}`}>
+                            Cleanup Efforts
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <Card className="mb-4">
                       <CardContent className="p-3">
                         <Text className="text-sm font-medium text-gray-800 mb-2">Year: {selectedYear}</Text>
                         <View className="flex-row items-center space-x-2">
@@ -816,7 +818,16 @@ const MapViewScreen = () => {
                 )}
               </View>
             )}
-          </ScrollView>
+            </ScrollView>
+          ) : (
+            <View className="flex-1 items-center justify-start px-4 pt-0 pb-2" style={{ backgroundColor: "rgba(255,255,255,0.88)" }}>
+              <View className="h-3 overflow-hidden">
+                <Text className="text-gray-500 text-xs text-center" style={{ lineHeight: 14 }}>
+                  Expand to view map details, filters, and reports.
+                </Text>
+              </View>
+            </View>
+          )}
         </Animated.View>
 
         {/* Filters Modal */}

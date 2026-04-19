@@ -154,7 +154,7 @@ const Footer: React.FC = () => {
   return (
     <View className="absolute bottom-0 left-0 right-0">
       {/* Background that stays at bottom */}
-      <View className="bg-white border-t border-gray-200" style={{ height: 75, transform: [{ translateY: 5 }] }}>
+      <View className="bg-white border-t border-gray-200" style={{ height: 110, transform: [{ translateY: 5 }] }}>
         <LinearGradient
           colors={['rgba(14, 165, 233, 0.05)', 'rgba(16, 183, 127, 0.05)']}
           start={{ x: 0, y: 0 }}
@@ -163,7 +163,8 @@ const Footer: React.FC = () => {
         />
       </View>
       {/* Footer content raised up */}
-      <View className="absolute bottom-0 left-0 right-0 flex-row items-end justify-around px-2 pt-2 pb-3" style={{ transform: [{ translateY: -5 }] }}>
+      <View className="absolute bottom-0 left-0 right-0 flex-row items-end justify-around px-2 pt-2 pb-3" style={{ transform: [{ translateY: 0
+       }] }}>
         {footerButtons.map((button, index) => (
           <FooterButton
             key={index}
