@@ -22,6 +22,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card"
 import { useAuth } from "../contexts/AuthContext";
 import { API_ENDPOINTS, apiRequest } from "../config/api";
 import LeafletMap from "../components/LeafletMap";
+import SeverityDistributionChart from "../components/SeverityDistributionChart";
+import { WBSICalculator, getReportsForLocation, getSeverityDescription, ChartData } from "../utils/wbsiCalculator";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 const BOTTOM_SHEET_MIN_HEIGHT = 64;
@@ -98,7 +100,7 @@ const mockSensorStations: SensorStation[] = [
     lastUpdated: "2024-01-15T10:30:00Z"
   },
   {
-    id: "SENSOR002", 
+    id: "SENSOR002",
     name: "Pasig River Station B",
     latitude: 14.5764,
     longitude: 121.0851,
@@ -141,7 +143,7 @@ const getWQIStatus = (wqi: number) => {
 const getPollutionTypeColor = (type: string) => {
   const colors: { [key: string]: string } = {
     'industrial': '#8b5cf6',
-    'plastic': '#06b6d4', 
+    'plastic': '#06b6d4',
     'sewage': '#84cc16',
     'chemical': '#f59e0b',
     'trash': '#ef4444',
@@ -205,19 +207,19 @@ const useReportsData = () => {
 const MapViewScreen = () => {
   const { user } = useAuth();
   const { reports, loading, error } = useReportsData();
-  
+
   // View state
   const [viewMode, setViewMode] = useState<ViewMode>("reports");
   const [researchMode, setResearchMode] = useState<ResearchMode>("spatial");
   const [temporalDataType, setTemporalDataType] = useState<TemporalDataType>("sensor");
-  
+
   // Report filtering
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [filterType, setFilterType] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [filteredReports, setFilteredReports] = useState<Report[]>([]);
-  
+
   // Research mode state  
   const [selectedSensor, setSelectedSensor] = useState<SensorStation | null>(null);
   const [showLayers, setShowLayers] = useState({
@@ -227,7 +229,7 @@ const MapViewScreen = () => {
   });
   const [selectedYear, setSelectedYear] = useState(2024);
   const [selectedParameters, setSelectedParameters] = useState<string[]>(["ph", "temperature"]);
-  
+
   // UI state
   const [showFilters, setShowFilters] = useState(false);
   const [currentLocation, setCurrentLocation] = useState({
@@ -236,7 +238,10 @@ const MapViewScreen = () => {
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   });
-  
+
+  // WBSI state
+  const [wbsiData, setWbsiData] = useState<ChartData | null>(null);
+
   // Bottom sheet animation
   const bottomSheetHeight = useRef(new Animated.Value(BOTTOM_SHEET_MIN_HEIGHT)).current;
   const dragStartHeight = useRef(BOTTOM_SHEET_MIN_HEIGHT);
@@ -306,7 +311,7 @@ const MapViewScreen = () => {
     let filtered = reports;
 
     if (filterType !== "all") {
-      filtered = filtered.filter(r => 
+      filtered = filtered.filter(r =>
         r.pollutionType.toLowerCase().includes(filterType.toLowerCase())
       );
     }
@@ -325,6 +330,35 @@ const MapViewScreen = () => {
 
     setFilteredReports(filtered);
   }, [reports, filterType, filterStatus, searchQuery]);
+
+  // Calculate WBSI when selectedReport changes
+  useEffect(() => {
+    console.log('selectedReport state changed:', selectedReport);
+
+    if (selectedReport) {
+      console.log('Calculating WBSI for selected report');
+      // Get nearby reports for the selected location
+      const nearbyReports = getReportsForLocation(reports, selectedReport, 5);
+      console.log('Nearby reports:', nearbyReports.length);
+
+      if (nearbyReports.length > 0) {
+        const calculator = new WBSICalculator();
+        try {
+          const wbsiResult = calculator.calculateWBSI([selectedReport]);
+          const chartData = calculator.generateChartData(wbsiResult);
+          console.log('WBSI calculation result:', chartData);
+          setWbsiData(chartData);
+        } catch (error) {
+          console.error('Error calculating WBSI:', error);
+          setWbsiData(null);
+        }
+      } else {
+        setWbsiData(null);
+      }
+    } else {
+      setWbsiData(null);
+    }
+  }, [selectedReport, reports]);
 
   // Calculate distribution data for charts
   const getDistributionData = (): DistributionData[] => {
@@ -767,7 +801,7 @@ const MapViewScreen = () => {
                             <Ionicons name="remove-circle" size={24} color="#0ea5e9" />
                           </TouchableOpacity>
                           <View className="flex-1 bg-gray-200 h-1 rounded-full">
-                            <View 
+                            <View
                               className="bg-waterbase-500 h-1 rounded-full"
                               style={{ width: `${((selectedYear - 2020) / 4) * 100}%` }}
                             />
@@ -791,11 +825,10 @@ const MapViewScreen = () => {
                           {["ph", "temperature", "dissolvedOxygen", "cod", "ecoli"].map((param) => (
                             <TouchableOpacity
                               key={param}
-                              className={`px-3 py-1 rounded-full border ${
-                                selectedParameters.includes(param)
+                              className={`px-3 py-1 rounded-full border ${selectedParameters.includes(param)
                                   ? "bg-waterbase-500 border-waterbase-500"
                                   : "bg-white border-gray-300"
-                              }`}
+                                }`}
                               onPress={() => {
                                 setSelectedParameters(prev =>
                                   prev.includes(param)
@@ -804,9 +837,8 @@ const MapViewScreen = () => {
                                 );
                               }}
                             >
-                              <Text className={`text-xs ${
-                                selectedParameters.includes(param) ? "text-white" : "text-gray-700"
-                              }`}>
+                              <Text className={`text-xs ${selectedParameters.includes(param) ? "text-white" : "text-gray-700"
+                                }`}>
                                 {param}
                               </Text>
                             </TouchableOpacity>
@@ -855,16 +887,14 @@ const MapViewScreen = () => {
                       {["all", "industrial", "plastic", "sewage", "chemical", "trash", "oil", "algae"].map((type) => (
                         <TouchableOpacity
                           key={type}
-                          className={`px-3 py-2 rounded-full border ${
-                            filterType === type
+                          className={`px-3 py-2 rounded-full border ${filterType === type
                               ? "bg-waterbase-500 border-waterbase-500"
                               : "bg-white border-gray-300"
-                          }`}
+                            }`}
                           onPress={() => setFilterType(type)}
                         >
-                          <Text className={`text-xs ${
-                            filterType === type ? "text-white" : "text-gray-700"
-                          }`}>
+                          <Text className={`text-xs ${filterType === type ? "text-white" : "text-gray-700"
+                            }`}>
                             {type === "all" ? "All Types" : type}
                           </Text>
                         </TouchableOpacity>
@@ -880,16 +910,14 @@ const MapViewScreen = () => {
                     {["all", "verified", "pending", "declined"].map((status) => (
                       <TouchableOpacity
                         key={status}
-                        className={`flex-1 px-3 py-2 rounded-lg border ${
-                          filterStatus === status
+                        className={`flex-1 px-3 py-2 rounded-lg border ${filterStatus === status
                             ? "bg-waterbase-500 border-waterbase-500"
                             : "bg-white border-gray-300"
-                        }`}
+                          }`}
                         onPress={() => setFilterStatus(status)}
                       >
-                        <Text className={`text-center text-xs ${
-                          filterStatus === status ? "text-white" : "text-gray-700"
-                        }`}>
+                        <Text className={`text-center text-xs ${filterStatus === status ? "text-white" : "text-gray-700"
+                          }`}>
                           {status === "all" ? "All Status" : status}
                         </Text>
                       </TouchableOpacity>
