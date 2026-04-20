@@ -10,6 +10,7 @@ export interface User {
   role: 'volunteer' | 'ngo' | 'lgu' | 'admin' | 'researcher';
   organization?: string;
   areaOfResponsibility?: string;
+  profile_photo?: string;
 }
 
 interface AuthContextType {

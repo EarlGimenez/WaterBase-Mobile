@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { ScrollView, View, Text, TouchableOpacity, Alert } from "react-native";
+import { ScrollView, View, Text, TouchableOpacity, Alert, Image, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import * as ImagePicker from 'expo-image-picker';
 import {
   Card,
   CardHeader,
@@ -12,6 +13,7 @@ import {
 import Navigation from "../components/Navigation";
 import ProtectedContent from "../components/ProtectedContent";
 import { useAuth } from "../contexts/AuthContext";
+import { API_ENDPOINTS, apiRequest } from "../config/api";
 
 interface UserStats {
   reportsSubmitted?: number;
@@ -29,10 +31,12 @@ interface UserStats {
 }
 
 const ProfileScreen = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, login, token } = useAuth();
   const [userStats, setUserStats] = useState<UserStats>({});
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('activity');
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(user?.profile_photo || null);
 
   const handleLogout = () => {
     Alert.alert(
@@ -47,6 +51,65 @@ const ProfileScreen = () => {
         },
       ]
     );
+  };
+
+  const handleProfilePhotoPress = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadProfilePhoto(result.assets[0].uri);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to pick image: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+
+  const uploadProfilePhoto = async (uri: string) => {
+    try {
+      setIsUploadingPhoto(true);
+
+      // Create FormData
+      const formData = new FormData();
+      const filename = uri.split('/').pop() || 'profile_photo.jpg';
+      const match = /\.(\w+)$/.exec(filename);
+      const type = match ? `image/${match[1]}` : `image/jpeg`;
+
+      formData.append('profile_photo', {
+        uri,
+        name: filename,
+        type,
+      } as any);
+
+      // Upload using apiRequest
+      const response = await apiRequest(API_ENDPOINTS.USER_PROFILE, {
+        method: 'PUT',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setProfilePhotoUri(result.user?.profile_photo || uri);
+        
+        // Update auth context with new user data
+        if (result.user && token) {
+          await login(token, result.user);
+        }
+
+        Alert.alert('Success', 'Profile photo updated successfully!');
+      } else {
+        throw new Error('Failed to upload profile photo');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to upload profile photo: ' + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setIsUploadingPhoto(false);
+    }
   };
 
   useEffect(() => {
@@ -147,12 +210,32 @@ const ProfileScreen = () => {
                     end={{ x: 1, y: 1 }}
                     className="w-20 h-20 rounded-full items-center justify-center"
                   >
-                    <Text className="text-white text-2xl font-bold">
-                      {user ? `${user.firstName[0]}${user.lastName[0]}` : 'U'}
-                    </Text>
+                    {profilePhotoUri && !profilePhotoUri.startsWith('http') ? (
+                      <Image
+                        source={{ uri: profilePhotoUri }}
+                        className="w-20 h-20 rounded-full"
+                      />
+                    ) : profilePhotoUri ? (
+                      <Image
+                        source={{ uri: `http://10.231.38.15:8000${profilePhotoUri}` }}
+                        className="w-20 h-20 rounded-full"
+                      />
+                    ) : (
+                      <Text className="text-white text-2xl font-bold">
+                        {user ? `${user.firstName[0]}${user.lastName[0]}` : 'U'}
+                      </Text>
+                    )}
                   </LinearGradient>
-                  <TouchableOpacity className="absolute -bottom-1 -right-1 w-6 h-6 bg-white rounded-full items-center justify-center border border-gray-300">
-                    <Ionicons name="camera" size={14} color="#0369a1" />
+                  <TouchableOpacity
+                    onPress={handleProfilePhotoPress}
+                    disabled={isUploadingPhoto}
+                    className="absolute -bottom-1 -right-1 w-6 h-6 bg-white rounded-full items-center justify-center border border-gray-300"
+                  >
+                    {isUploadingPhoto ? (
+                      <ActivityIndicator size="small" color="#0369a1" />
+                    ) : (
+                      <Ionicons name="camera" size={14} color="#0369a1" />
+                    )}
                   </TouchableOpacity>
                 </View>
 
