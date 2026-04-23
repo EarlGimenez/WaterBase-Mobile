@@ -12,6 +12,7 @@ import {
   CardContent,
 } from "../components/ui/Card";
 import { SearchableLocationSelect } from "../components/ui/SearchableLocationSelect";
+import { OrganizationSelect } from "../components/ui/OrganizationSelect";
 import Navigation from "../components/Navigation";
 import { API_ENDPOINTS, apiRequest } from "../config/api";
 
@@ -338,13 +339,12 @@ const RegisterScreen = () => {
                       <Text className="text-sm font-medium text-waterbase-700 mb-2">
                         Organization/Agency *
                       </Text>
-                      <TextInput
+                      <OrganizationSelect
                         value={formData.organization}
-                        onChangeText={(text) => setFormData({ ...formData, organization: text })}
-                        placeholder="Enter organization name"
-                        editable={!isLoading}
-                        className="border border-gray-300 rounded-lg px-3 py-3 text-waterbase-900 bg-white"
-                        style={{ fontSize: 16, lineHeight: 20 }}
+                        onValueChange={(value) => setFormData({ ...formData, organization: value })}
+                        placeholder="Select your organization"
+                        disabled={isLoading}
+                        className="w-full"
                       />
                     </View>
 

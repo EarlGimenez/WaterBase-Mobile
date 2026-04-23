@@ -15,6 +15,7 @@ import CommunityScreen from "./src/screens/CommunityScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
 import NotificationsScreen from "./src/screens/NotificationsScreen";
 import HowItWorksScreen from "./src/screens/HowItWorksScreen";
+import OrganizationProfileScreen from "./src/screens/OrganizationProfileScreen";
 
 // Import components
 import Layout from "./src/components/Layout";
@@ -51,6 +52,7 @@ export default function App() {
             <Stack.Screen name="MapView" component={ScreenWithLayout(MapViewScreen)} />
             <Stack.Screen name="Community" component={ScreenWithLayout(CommunityScreen)} />
             <Stack.Screen name="Profile" component={ScreenWithLayout(ProfileScreen)} />
+            <Stack.Screen name="OrganizationProfile" component={ScreenWithLayout(OrganizationProfileScreen)} />
             <Stack.Screen name="Notifications" component={ScreenWithLayout(NotificationsScreen)} />
             <Stack.Screen name="HowItWorks" component={ScreenWithLayout(HowItWorksScreen)} />
           </Stack.Navigator>

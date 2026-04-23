@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ScrollView, View, Text, TouchableOpacity, Alert, Image, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -14,6 +15,7 @@ import Navigation from "../components/Navigation";
 import ProtectedContent from "../components/ProtectedContent";
 import { useAuth } from "../contexts/AuthContext";
 import { API_ENDPOINTS, apiRequest } from "../config/api";
+import { SearchableLocationSelect } from "../components/ui/SearchableLocationSelect";
 
 interface UserStats {
   reportsSubmitted?: number;
@@ -30,13 +32,33 @@ interface UserStats {
   badges?: string[];
 }
 
+interface OrganizationSummary {
+  id: number;
+  firstName: string;
+  lastName: string;
+  organization?: string;
+  role: string;
+  areaOfResponsibility?: string;
+}
+
 const ProfileScreen = () => {
+  const navigation = useNavigation();
   const { user, logout, login, token } = useAuth();
   const [userStats, setUserStats] = useState<UserStats>({});
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('activity');
+  const [isOrganizationsLoading, setIsOrganizationsLoading] = useState(false);
+  const [joinedOrganizations, setJoinedOrganizations] = useState<OrganizationSummary[]>([]);
+  const [followedOrganizations, setFollowedOrganizations] = useState<OrganizationSummary[]>([]);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(user?.profile_photo || null);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [selectedAreaOfResponsibility, setSelectedAreaOfResponsibility] = useState(user?.areaOfResponsibility || '');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  const shouldRequireArea = (role?: string) => {
+    return ['ngo', 'lgu', 'researcher'].includes((role || '').toLowerCase());
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -112,6 +134,49 @@ const ProfileScreen = () => {
     }
   };
 
+  const handleSaveProfile = async () => {
+    if (!user || !token) {
+      Alert.alert('Error', 'You need to be logged in to update your profile.');
+      return;
+    }
+
+    const trimmedArea = selectedAreaOfResponsibility.trim();
+
+    if (shouldRequireArea(user.role) && !trimmedArea) {
+      Alert.alert('Missing Location', 'Area of responsibility is required for your role.');
+      return;
+    }
+
+    try {
+      setIsSavingProfile(true);
+
+      const response = await apiRequest(API_ENDPOINTS.USER_PROFILE, {
+        method: 'PUT',
+        body: JSON.stringify({
+          areaOfResponsibility: trimmedArea,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.user) {
+        await login(token, result.user);
+      }
+
+      setIsEditProfileOpen(false);
+      Alert.alert('Success', 'Profile location updated successfully.');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update profile location: ' + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  useEffect(() => {
+    setProfilePhotoUri(user?.profile_photo || null);
+    setSelectedAreaOfResponsibility(user?.areaOfResponsibility || '');
+  }, [user]);
+
   useEffect(() => {
     // Mock data fetch
     setTimeout(() => {
@@ -125,6 +190,83 @@ const ProfileScreen = () => {
       setIsLoading(false);
     }, 1000);
   }, []);
+
+  const fetchUserOrganizations = async () => {
+    try {
+      setIsOrganizationsLoading(true);
+      const response = await apiRequest(API_ENDPOINTS.USER_ORGANIZATIONS, {
+        method: 'GET',
+      });
+
+      const result = await response.json();
+      setJoinedOrganizations(result.joinedOrganizations || []);
+      setFollowedOrganizations(result.followedOrganizations || []);
+    } catch (error) {
+      console.error('Failed to load user organizations', error);
+    } finally {
+      setIsOrganizationsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchUserOrganizations();
+    }
+  }, [user]);
+
+  const openOrganizationProfile = (organizationId: number) => {
+    navigation.navigate('OrganizationProfile' as never, { organizationId } as never);
+  };
+
+  const renderOrganizationsTab = (title: string, organizations: OrganizationSummary[], emptyMessage: string, badgeLabel: string) => {
+    if (isOrganizationsLoading) {
+      return (
+        <View className="items-center py-6">
+          <ActivityIndicator size="small" color="#0369a1" />
+          <Text className="text-waterbase-600 mt-2">Loading organizations...</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View>
+        <Text className="text-lg font-semibold text-waterbase-950 mb-3">{title}</Text>
+        {organizations.length === 0 ? (
+          <View className="bg-waterbase-50 p-4 rounded-lg border border-waterbase-200">
+            <Text className="text-waterbase-700">{emptyMessage}</Text>
+          </View>
+        ) : (
+          <View className="space-y-3">
+            {organizations.map((org) => (
+              <TouchableOpacity
+                key={org.id}
+                onPress={() => openOrganizationProfile(org.id)}
+                className="p-3 bg-waterbase-50 rounded-lg border border-waterbase-200"
+              >
+                <View className="flex-row items-center justify-between">
+                  <View className="flex-1 mr-3">
+                    <Text className="text-sm font-semibold text-waterbase-950">
+                      {org.organization || `${org.firstName} ${org.lastName}`}
+                    </Text>
+                    {org.areaOfResponsibility ? (
+                      <Text className="text-xs text-waterbase-600 mt-1">{org.areaOfResponsibility}</Text>
+                    ) : null}
+                  </View>
+
+                  <View className="flex-row items-center">
+                    <View className="bg-white border border-waterbase-200 px-2 py-1 rounded-full mr-2">
+                      <Text className="text-xs text-waterbase-700">{badgeLabel}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  };
 
   const getBadgeIcon = (badgeName: string) => {
     const name = badgeName?.toLowerCase() || '';
@@ -334,6 +476,8 @@ const ProfileScreen = () => {
         <View className="px-4 mb-6">
           <View className="flex-row space-x-2 mb-4">
             <TabButton id="activity" title="Activity" isActive={activeTab === 'activity'} />
+            <TabButton id="joined" title="Groups Joined" isActive={activeTab === 'joined'} />
+            <TabButton id="followed" title="Following" isActive={activeTab === 'followed'} />
             <TabButton id="settings" title="Settings" isActive={activeTab === 'settings'} />
           </View>
 
@@ -366,17 +510,77 @@ const ProfileScreen = () => {
                     </View>
                   </View>
                 </View>
+              ) : activeTab === 'joined' ? (
+                renderOrganizationsTab(
+                  'Groups Joined',
+                  joinedOrganizations,
+                  'You have not joined any organizations yet. Find organizations in Community and send a join request.',
+                  'Member'
+                )
+              ) : activeTab === 'followed' ? (
+                renderOrganizationsTab(
+                  'Organizations Followed',
+                  followedOrganizations,
+                  'You are not following any organizations yet. Follow organizations in Community to track their updates.',
+                  'Following'
+                )
               ) : (
                 <View>
                   <Text className="text-lg font-semibold text-waterbase-950 mb-3">Settings</Text>
                   <View className="space-y-3">
-                    <TouchableOpacity className="flex-row items-center justify-between py-2">
+                    <TouchableOpacity
+                      className="flex-row items-center justify-between py-2"
+                      onPress={() => setIsEditProfileOpen((prev) => !prev)}
+                    >
                       <View className="flex-row items-center">
                         <Ionicons name="person-outline" size={20} color="#0369a1" />
                         <Text className="ml-3 text-waterbase-900">Edit Profile</Text>
                       </View>
-                      <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+                      <Ionicons
+                        name={isEditProfileOpen ? "chevron-down" : "chevron-forward"}
+                        size={20}
+                        color="#9ca3af"
+                      />
                     </TouchableOpacity>
+                    {isEditProfileOpen && (
+                      <View className="bg-waterbase-50 rounded-lg p-3 border border-waterbase-200">
+                        <Text className="text-sm font-medium text-waterbase-800 mb-2">
+                          Area of Responsibility
+                        </Text>
+                        <SearchableLocationSelect
+                          value={selectedAreaOfResponsibility}
+                          onValueChange={setSelectedAreaOfResponsibility}
+                          placeholder="Search and select your location..."
+                          disabled={isSavingProfile}
+                        />
+                        <Text className="text-xs text-waterbase-600 mt-2">
+                          Use the same location framework used during registration.
+                        </Text>
+                        <View className="flex-row justify-end mt-3">
+                          <TouchableOpacity
+                            className="px-3 py-2 rounded-lg border border-gray-300 mr-2"
+                            onPress={() => {
+                              setSelectedAreaOfResponsibility(user?.areaOfResponsibility || '');
+                              setIsEditProfileOpen(false);
+                            }}
+                            disabled={isSavingProfile}
+                          >
+                            <Text className="text-gray-700">Cancel</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            className={`px-3 py-2 rounded-lg ${isSavingProfile ? 'bg-waterbase-300' : 'bg-waterbase-600'}`}
+                            onPress={handleSaveProfile}
+                            disabled={isSavingProfile}
+                          >
+                            {isSavingProfile ? (
+                              <ActivityIndicator size="small" color="#ffffff" />
+                            ) : (
+                              <Text className="text-white">Save</Text>
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
                     <TouchableOpacity className="flex-row items-center justify-between py-2">
                       <View className="flex-row items-center">
                         <Ionicons name="notifications-outline" size={20} color="#0369a1" />
