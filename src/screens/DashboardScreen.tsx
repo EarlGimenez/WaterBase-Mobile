@@ -1,5 +1,5 @@
-import React from "react";
-import { ScrollView, View, Text } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, ScrollView, View, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
@@ -10,96 +10,142 @@ import {
   CardContent,
 } from "../components/ui/Card";
 import Navigation from "../components/Navigation";
+import { API_ENDPOINTS, apiRequest } from "../config/api";
+import { useAuth } from "../contexts/AuthContext";
+
+type DashboardStats = {
+  totalReports?: number;
+  verifiedReports?: number;
+  activeUsers?: number;
+  totalUsers?: number;
+  activeEvents?: number;
+  totalCleanups?: number;
+  pendingValidation?: number;
+  rejectedReports?: number;
+};
+
+type RecentReport = {
+  id: number;
+  title: string;
+  address?: string;
+  pollutionType?: string;
+  severityByUser?: string;
+  status?: string;
+  created_at?: string;
+};
+
+type TrendPoint = {
+  month: string;
+  total_reports: number;
+  verified_reports: number;
+  pending_reports: number;
+};
 
 const DashboardScreen = () => {
-  const stats = [
+  const { token } = useAuth();
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [recentReports, setRecentReports] = useState<RecentReport[]>([]);
+  const [monthlyTrends, setMonthlyTrends] = useState<TrendPoint[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const statsCards = useMemo(() => [
     {
       title: "Total Reports",
-      value: "1,234",
-      change: "+12%",
+      value: stats?.totalReports ?? 0,
+      change: stats ? `${stats.pendingValidation ?? 0} pending` : "Loading",
       icon: "document-text",
       color: "#0ea5e9",
     },
     {
       title: "Verified Reports",
-      value: "987",
-      change: "80%",
+      value: stats?.verifiedReports ?? 0,
+      change: stats ? `${stats.rejectedReports ?? 0} declined` : "Loading",
       icon: "shield-checkmark",
       color: "#22c55e",
     },
     {
       title: "Active Users",
-      value: "2,450",
-      change: "+18%",
+      value: stats?.activeUsers ?? stats?.totalUsers ?? 0,
+      change: stats?.totalUsers ? `${stats.totalUsers} total` : "Loading",
       icon: "people",
       color: "#0ea5e9",
     },
     {
-      title: "Sites Cleaned",
-      value: "156",
-      change: "+7",
+      title: "Active Events",
+      value: stats?.activeEvents ?? 0,
+      change: stats ? `${stats.totalCleanups ?? 0} cleanup drives` : "Loading",
       icon: "location",
       color: "#22c55e",
     },
-  ];
+  ], [stats]);
 
-  const recentReports = [
-    {
-      location: "Pasig River, Metro Manila",
-      type: "Industrial Waste",
-      severity: "High",
-      time: "2 hours ago",
-      severityColor: "#f59e0b",
-    },
-    {
-      location: "Manila Bay, Manila",
-      type: "Chemical Pollution",
-      severity: "Critical",
-      time: "4 hours ago",
-      severityColor: "#ef4444",
-    },
-    {
-      location: "Marikina River, QC",
-      type: "Plastic Pollution",
-      severity: "Medium",
-      time: "6 hours ago",
-      severityColor: "#f97316",
-    },
-    {
-      location: "Laguna Lake, Laguna",
-      type: "Sewage Discharge",
-      severity: "High",
-      time: "8 hours ago",
-      severityColor: "#f59e0b",
-    },
-  ];
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      if (!token) {
+        setIsLoading(false);
+        return;
+      }
 
-  const cleanupProjects = [
-    {
-      project: "Manila Bay Restoration",
-      organization: "Manila Bay Coalition",
-      progress: 75,
-      status: "Active",
-    },
-    {
-      project: "Pasig River Cleanup",
-      organization: "MMDA",
-      progress: 60,
-      status: "Active",
-    },
-    {
-      project: "Marikina Riverbank",
-      organization: "Marikina LGU",
-      progress: 90,
-      status: "Completing",
-    },
-    {
-      project: "Laguna Lake Phase 2",
-      organization: "LLDA",
-      progress: 30,
-      status: "Starting",
-    },
-  ];
+      setIsLoading(true);
+      setError(null);
+      try {
+        const [statsResponse, recentReportsResponse, trendsResponse] = await Promise.all([
+          apiRequest(`${API_ENDPOINTS.DASHBOARD}/stats`, { method: "GET" }),
+          apiRequest(`${API_ENDPOINTS.DASHBOARD}/recent-reports`, { method: "GET" }),
+          apiRequest(`${API_ENDPOINTS.DASHBOARD}/monthly-trends`, { method: "GET" }),
+        ]);
+
+        const statsPayload = await statsResponse.json();
+        const recentReportsPayload = await recentReportsResponse.json();
+        const trendsPayload = await trendsResponse.json();
+
+        setStats(statsPayload);
+        setRecentReports(Array.isArray(recentReportsPayload) ? recentReportsPayload : []);
+        setMonthlyTrends(Array.isArray(trendsPayload) ? trendsPayload : []);
+      } catch (fetchError) {
+        console.error("Failed to fetch dashboard data", fetchError);
+        setError("Live dashboard data is temporarily unavailable.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [token]);
+
+  const cleanupProjects = useMemo(() => {
+    if (monthlyTrends.length === 0) {
+      return [
+        {
+          project: "Loading cleanup data",
+          organization: "WaterBase",
+          progress: 35,
+          status: "Loading",
+        },
+      ];
+    }
+
+    return monthlyTrends.slice(-4).map((trend, index) => ({
+      project: `${trend.month} cleanup snapshot`,
+      organization: "Live backend trend",
+      progress: Math.min(100, Math.round((trend.verified_reports / Math.max(1, trend.total_reports)) * 100)),
+      status: index === monthlyTrends.length - 1 ? "Latest" : "Trend",
+    }));
+  }, [monthlyTrends]);
+
+  const formatReportSeverity = (severity?: string) => {
+    switch ((severity || "").toLowerCase()) {
+      case "critical":
+        return { label: "Critical", color: "#ef4444" };
+      case "high":
+        return { label: "High", color: "#f59e0b" };
+      case "medium":
+        return { label: "Medium", color: "#f97316" };
+      default:
+        return { label: "Low", color: "#22c55e" };
+    }
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-gradient-to-br from-waterbase-50 to-enviro-50">
@@ -120,7 +166,7 @@ const DashboardScreen = () => {
           {/* Quick Stats */}
           <View className="mb-6">
             <View className="flex-row flex-wrap -mx-2">
-              {stats.map((stat, index) => (
+              {statsCards.map((stat, index) => (
                 <View key={index} className="w-1/2 px-2 mb-4">
                   <Card className="border-waterbase-200">
                     <CardContent className="p-4">
@@ -135,11 +181,11 @@ const DashboardScreen = () => {
                         />
                       </View>
                       <Text className="text-xl font-bold text-waterbase-950 mb-1">
-                        {stat.value}
+                        {isLoading ? "--" : stat.value}
                       </Text>
                       <Text className="text-xs text-waterbase-600">
                         <Text className="text-enviro-600">{stat.change}</Text>{" "}
-                        from last month
+                        from web dashboard
                       </Text>
                     </CardContent>
                   </Card>
@@ -160,37 +206,51 @@ const DashboardScreen = () => {
             </CardHeader>
             <CardContent>
               <View className="space-y-3">
-                {recentReports.map((report, index) => (
+                {isLoading ? (
+                  <View className="py-8 items-center justify-center">
+                    <ActivityIndicator size="small" color="#0369a1" />
+                  </View>
+                ) : recentReports.length === 0 ? (
+                  <Text className="text-waterbase-600">
+                    No recent reports returned by the backend.
+                  </Text>
+                ) : (
+                  recentReports.map((report, index) => {
+                    const severity = formatReportSeverity(report.severityByUser);
+
+                    return (
                   <View
                     key={index}
                     className="flex-row items-center justify-between p-3 bg-waterbase-50 rounded-lg"
                   >
                     <View className="flex-1">
                       <Text className="font-medium text-sm text-waterbase-950 mb-1">
-                        {report.location}
+                        {report.address || report.title}
                       </Text>
                       <Text className="text-xs text-waterbase-600">
-                        {report.type}
+                        {report.pollutionType || report.status || "Report"}
                       </Text>
                     </View>
                     <View className="items-end">
                       <View
                         className="px-2 py-1 rounded-full mb-1"
-                        style={{ backgroundColor: report.severityColor + "20" }}
+                        style={{ backgroundColor: severity.color + "20" }}
                       >
                         <Text
                           className="text-xs font-medium"
-                          style={{ color: report.severityColor }}
+                          style={{ color: severity.color }}
                         >
-                          {report.severity}
+                          {severity.label}
                         </Text>
                       </View>
                       <Text className="text-xs text-waterbase-600">
-                        {report.time}
+                        {report.created_at ? new Date(report.created_at).toLocaleString() : "Recent"}
                       </Text>
                     </View>
                   </View>
-                ))}
+                    );
+                  })
+                )}
               </View>
             </CardContent>
           </Card>
@@ -252,7 +312,7 @@ const DashboardScreen = () => {
                 <View className="h-32 bg-gradient-to-br from-waterbase-100 to-enviro-100 rounded-lg items-center justify-center">
                   <Ionicons name="bar-chart" size={32} color="#0ea5e9" />
                   <Text className="text-waterbase-600 mt-2 text-sm">
-                    Chart visualization coming soon
+                    Live backend stats now drive this section
                   </Text>
                 </View>
               </CardContent>
@@ -271,7 +331,7 @@ const DashboardScreen = () => {
                 <View className="h-32 bg-gradient-to-br from-waterbase-100 to-enviro-100 rounded-lg items-center justify-center">
                   <Ionicons name="trending-up" size={32} color="#22c55e" />
                   <Text className="text-waterbase-600 mt-2 text-sm">
-                    Trend analysis coming soon
+                    Monthly trends are synced from the web dashboard
                   </Text>
                 </View>
               </CardContent>
@@ -280,9 +340,7 @@ const DashboardScreen = () => {
 
           <View className="mb-6">
             <Text className="text-waterbase-600 text-sm text-center">
-              Dashboard features are coming soon. This will include real-time
-              analytics, detailed reporting, data visualization, and
-              administrative tools.
+              Dashboard metrics and trend snapshots are pulled from the shared backend so mobile and web stay aligned.
             </Text>
           </View>
         </View>

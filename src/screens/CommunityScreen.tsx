@@ -53,6 +53,26 @@ type JoinRequestRecord = {
   };
 };
 
+type CleanupDrive = {
+  id: number;
+  title: string;
+  address: string;
+  date: string;
+  time: string;
+  duration: string | number;
+  description: string;
+  maxVolunteers: number;
+  currentVolunteers?: number;
+  points: number;
+  badge?: string;
+  status: string;
+  creator?: {
+    firstName: string;
+    lastName: string;
+    organization?: string;
+  };
+};
+
 const CommunityScreen = () => {
   const navigation = useNavigation();
   const { user } = useAuth();
@@ -64,6 +84,8 @@ const CommunityScreen = () => {
   const [joinRequests, setJoinRequests] = useState<JoinRequestRecord[]>([]);
   const [orgJoinRequests, setOrgJoinRequests] = useState<JoinRequestRecord[]>([]);
   const [autoAcceptJoinRequests, setAutoAcceptJoinRequests] = useState(false);
+  const [cleanupDrives, setCleanupDrives] = useState<CleanupDrive[]>([]);
+  const [driveActionId, setDriveActionId] = useState<number | null>(null);
 
   const isOrganizationAccount = useMemo(() => {
     const role = (user?.role || "").toLowerCase();
@@ -108,13 +130,17 @@ const CommunityScreen = () => {
         apiRequest(API_ENDPOINTS.USER_JOIN_REQUESTS, { method: "GET" }),
       ]);
 
+      const drivesResponse = await apiRequest(API_ENDPOINTS.EVENTS, { method: "GET" });
+
       const feedPayload = await feedResponse.json();
       const directoryPayload = await directoryResponse.json();
       const userRequestsPayload = await userRequestsResponse.json();
+      const drivesPayload = await drivesResponse.json();
 
       setUpdates(Array.isArray(feedPayload?.data) ? feedPayload.data : []);
       setOrganizations(Array.isArray(directoryPayload?.data) ? directoryPayload.data : []);
       setJoinRequests(Array.isArray(userRequestsPayload?.data) ? userRequestsPayload.data : []);
+      setCleanupDrives(Array.isArray(drivesPayload) ? drivesPayload : Array.isArray(drivesPayload?.data) ? drivesPayload.data : []);
 
       if (user && isOrganizationAccount) {
         const [orgRequestsResponse, orgSettingsResponse] = await Promise.all([
@@ -215,6 +241,27 @@ const CommunityScreen = () => {
     }
   };
 
+  const handleJoinCleanupDrive = async (driveId: number) => {
+    if (isSubmitting || driveActionId === driveId) {
+      return;
+    }
+
+    setDriveActionId(driveId);
+    setIsSubmitting(true);
+    try {
+      await apiRequest(`${API_ENDPOINTS.EVENTS}/${driveId}/join`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      await fetchCommunityData();
+    } catch (error) {
+      console.error("Failed to join cleanup drive", error);
+    } finally {
+      setDriveActionId(null);
+      setIsSubmitting(false);
+    }
+  };
+
   const openOrganizationProfile = (organizationId: number) => {
     navigation.navigate("OrganizationProfile" as never, { organizationId } as never);
   };
@@ -304,6 +351,89 @@ const CommunityScreen = () => {
                   </CardContent>
                 </Card>
               )}
+
+              <Card className="border-waterbase-200 mb-6">
+                <CardHeader>
+                  <CardTitle className="text-waterbase-950">Cleanup Drives</CardTitle>
+                  <CardDescription className="text-waterbase-600">
+                    Live volunteer events pulled from the backend event queue.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {cleanupDrives.length === 0 ? (
+                    <Text className="text-waterbase-600">
+                      No cleanup drives are recruiting right now.
+                    </Text>
+                  ) : (
+                    <View className="space-y-3">
+                      {cleanupDrives
+                        .filter((drive) => drive.status === "recruiting" || drive.status === "active")
+                        .slice(0, 5)
+                        .map((drive) => {
+                          const volunteers = drive.currentVolunteers ?? 0;
+                          const slotsLeft = Math.max(drive.maxVolunteers - volunteers, 0);
+
+                          return (
+                            <View key={drive.id} className="p-4 rounded-xl border border-waterbase-200 bg-waterbase-50">
+                              <View className="flex-row items-start justify-between gap-3 mb-2">
+                                <View className="flex-1">
+                                  <Text className="font-semibold text-waterbase-950">
+                                    {drive.title}
+                                  </Text>
+                                  <Text className="text-xs text-waterbase-600 mt-1">
+                                    {drive.address}
+                                  </Text>
+                                </View>
+                                <View className="px-2 py-1 rounded-full bg-enviro-100">
+                                  <Text className="text-xs font-medium text-enviro-800">
+                                    {drive.status}
+                                  </Text>
+                                </View>
+                              </View>
+
+                              <Text className="text-sm text-waterbase-700 mb-3">
+                                {drive.description}
+                              </Text>
+
+                              <View className="flex-row flex-wrap gap-2 mb-3">
+                                <View className="px-2 py-1 bg-white rounded-full border border-waterbase-200">
+                                  <Text className="text-xs text-waterbase-700">
+                                    {new Date(`${drive.date}T${drive.time}`).toLocaleString()}
+                                  </Text>
+                                </View>
+                                <View className="px-2 py-1 bg-white rounded-full border border-waterbase-200">
+                                  <Text className="text-xs text-waterbase-700">
+                                    {volunteers}/{drive.maxVolunteers} volunteers
+                                  </Text>
+                                </View>
+                                <View className="px-2 py-1 bg-white rounded-full border border-waterbase-200">
+                                  <Text className="text-xs text-waterbase-700">
+                                    {slotsLeft} slots left
+                                  </Text>
+                                </View>
+                                <View className="px-2 py-1 bg-white rounded-full border border-waterbase-200">
+                                  <Text className="text-xs text-waterbase-700">
+                                    {drive.points} points
+                                  </Text>
+                                </View>
+                              </View>
+
+                              <TouchableOpacity
+                                className="bg-waterbase-500 rounded-lg py-3 items-center"
+                                onPress={() => handleJoinCleanupDrive(drive.id)}
+                                disabled={isSubmitting || driveActionId === drive.id}
+                              >
+                                <Text className="text-white font-semibold">
+                                  {driveActionId === drive.id ? "Joining..." : "Join Cleanup Drive"}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          );
+                        })}
+                    </View>
+                  )}
+                </CardContent>
+              </Card>
 
               <View className="mb-6">
                 <Text className="text-lg font-semibold text-waterbase-950 mb-3">Community Feed</Text>

@@ -1,8 +1,10 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { useAuth } from "../contexts/AuthContext";
+import { fetchUnreadCount } from "../services/notifications";
 
 interface NavigationProps {
   title?: string;
@@ -16,6 +18,36 @@ export const Navigation: React.FC<NavigationProps> = ({
   rightActions,
 }) => {
   const navigation = useNavigation();
+  const { token, isAuthenticated } = useAuth();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (!token || !isAuthenticated) {
+      setUnreadCount(0);
+      return;
+    }
+
+    let mounted = true;
+
+    const refreshUnreadCount = async () => {
+      try {
+        const count = await fetchUnreadCount(token);
+        if (mounted) {
+          setUnreadCount(count);
+        }
+      } catch (error) {
+        console.log('Notification badge refresh failed:', error);
+      }
+    };
+
+    refreshUnreadCount();
+    const intervalId = setInterval(refreshUnreadCount, 30000);
+
+    return () => {
+      mounted = false;
+      clearInterval(intervalId);
+    };
+  }, [token, isAuthenticated]);
 
   return (
     <View className="bg-white border-b-2 border-[#89CFEB] pt-2 pb-4 px-4">
@@ -52,8 +84,13 @@ export const Navigation: React.FC<NavigationProps> = ({
             style={{ minWidth: 44, minHeight: 44 }}
           >
             <Ionicons name="notifications-outline" size={22} color="#0369a1" />
-            {/* Notification Badge */}
-            <View className="absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full" />
+            {unreadCount > 0 && (
+              <View className="absolute top-2 right-2 min-w-4 h-4 px-1 bg-red-500 rounded-full items-center justify-center">
+                <Text className="text-[10px] font-bold text-white">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
 
           {/* Profile Button */}

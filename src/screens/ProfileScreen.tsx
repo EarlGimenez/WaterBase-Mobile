@@ -14,7 +14,7 @@ import {
 import Navigation from "../components/Navigation";
 import ProtectedContent from "../components/ProtectedContent";
 import { useAuth } from "../contexts/AuthContext";
-import { API_ENDPOINTS, apiRequest } from "../config/api";
+import API_CONFIG, { API_ENDPOINTS, apiRequest } from "../config/api";
 import { SearchableLocationSelect } from "../components/ui/SearchableLocationSelect";
 
 interface UserStats {
@@ -55,6 +55,26 @@ const ProfileScreen = () => {
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [selectedAreaOfResponsibility, setSelectedAreaOfResponsibility] = useState(user?.areaOfResponsibility || '');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const backendBaseUrl = API_CONFIG.BASE_URL.replace(/\/api$/, '');
+
+  const resolveProfilePhotoUri = (uri: string | null) => {
+    if (!uri) {
+      return null;
+    }
+
+    if (
+      uri.startsWith('http://') ||
+      uri.startsWith('https://') ||
+      uri.startsWith('file://') ||
+      uri.startsWith('content://') ||
+      uri.startsWith('data:')
+    ) {
+      return uri;
+    }
+
+    const normalizedPath = uri.startsWith('/') ? uri : `/${uri}`;
+    return `${backendBaseUrl}${normalizedPath}`;
+  };
 
   const shouldRequireArea = (role?: string) => {
     return ['ngo', 'lgu', 'researcher'].includes((role || '').toLowerCase());
@@ -324,12 +344,12 @@ const ProfileScreen = () => {
     ));
   };
 
-  const TabButton = ({ id, title, isActive }: { id: string; title: string; isActive: boolean }) => (
+  const TabButton = ({ id, title, isActive, textClassName = '', buttonClassName = '' }: { id: string; title: string; isActive: boolean; textClassName?: string; buttonClassName?: string }) => (
     <TouchableOpacity
       onPress={() => setActiveTab(id)}
-      className={`flex-1 py-3 px-4 rounded-lg ${isActive ? 'bg-waterbase-500' : 'bg-gray-100'}`}
+      className={`flex-1 py-3 px-4 rounded-lg items-center justify-center ${isActive ? 'bg-waterbase-500' : 'bg-gray-100'} ${buttonClassName}`}
     >
-      <Text className={`text-center font-medium ${isActive ? 'text-white' : 'text-gray-600'}`}>
+      <Text className={`text-center font-medium ${isActive ? 'text-white' : 'text-gray-600'} ${textClassName}`}>
         {title}
       </Text>
     </TouchableOpacity>
@@ -352,14 +372,9 @@ const ProfileScreen = () => {
                     end={{ x: 1, y: 1 }}
                     className="w-20 h-20 rounded-full items-center justify-center"
                   >
-                    {profilePhotoUri && !profilePhotoUri.startsWith('http') ? (
+                    {profilePhotoUri ? (
                       <Image
-                        source={{ uri: profilePhotoUri }}
-                        className="w-20 h-20 rounded-full"
-                      />
-                    ) : profilePhotoUri ? (
-                      <Image
-                        source={{ uri: `http://10.231.38.15:8000${profilePhotoUri}` }}
+                        source={{ uri: resolveProfilePhotoUri(profilePhotoUri) || undefined }}
                         className="w-20 h-20 rounded-full"
                       />
                     ) : (
@@ -477,7 +492,7 @@ const ProfileScreen = () => {
           <View className="flex-row space-x-2 mb-4">
             <TabButton id="activity" title="Activity" isActive={activeTab === 'activity'} />
             <TabButton id="joined" title="Groups Joined" isActive={activeTab === 'joined'} />
-            <TabButton id="followed" title="Following" isActive={activeTab === 'followed'} />
+            <TabButton id="followed" title="Following" isActive={activeTab === 'followed'} textClassName="text-[13px] leading-[14px]" buttonClassName="items-center justify-center" />
             <TabButton id="settings" title="Settings" isActive={activeTab === 'settings'} />
           </View>
 

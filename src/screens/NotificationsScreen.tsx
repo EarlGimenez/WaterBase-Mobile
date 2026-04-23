@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ScrollView, View, Text, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -10,84 +10,68 @@ import {
 } from "../components/ui/Card";
 import Navigation from "../components/Navigation";
 import ProtectedContent from "../components/ProtectedContent";
-
-interface Notification {
-  id: string;
-  type: 'report' | 'event' | 'system' | 'achievement';
-  title: string;
-  message: string;
-  timestamp: string;
-  read: boolean;
-  priority: 'low' | 'medium' | 'high';
-}
+import { useAuth } from "../contexts/AuthContext";
+import {
+  fetchNotifications,
+  markAllNotificationsRead,
+  markNotificationReadState,
+  type NotificationItem,
+} from "../services/notifications";
 
 const NotificationsScreen = () => {
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: '1',
-      type: 'report',
-      title: 'Report Verified',
-      message: 'Your pollution report at Manila Bay has been verified by authorities.',
-      timestamp: '2024-01-15T10:30:00Z',
-      read: false,
-      priority: 'medium'
-    },
-    {
-      id: '2',
-      type: 'event',
-      title: 'Upcoming Cleanup Event',
-      message: 'Beach cleanup at Roxas Boulevard scheduled for tomorrow at 8:00 AM.',
-      timestamp: '2024-01-14T16:45:00Z',
-      read: false,
-      priority: 'high'
-    },
-    {
-      id: '3',
-      type: 'achievement',
-      title: 'Badge Earned',
-      message: 'Congratulations! You earned the "Water Guardian" badge.',
-      timestamp: '2024-01-13T14:20:00Z',
-      read: true,
-      priority: 'low'
-    },
-    {
-      id: '4',
-      type: 'system',
-      title: 'App Update Available',
-      message: 'A new version of WaterBase is available with improved features.',
-      timestamp: '2024-01-12T09:15:00Z',
-      read: true,
-      priority: 'low'
-    }
-  ]);
+  const { token } = useAuth();
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedFilter, setSelectedFilter] = useState('all');
 
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'report':
-        return 'document-text';
-      case 'event':
-        return 'calendar';
-      case 'achievement':
-        return 'trophy';
-      case 'system':
-        return 'settings';
-      default:
-        return 'notifications';
+  const unreadCount = useMemo(() => notifications.filter((n) => !n.read_at).length, [notifications]);
+
+  const loadNotifications = async (read?: boolean) => {
+    if (!token) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      const page = await fetchNotifications(token, read);
+      setNotifications(page.data ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load notifications');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getNotificationColor = (type: string, priority: string) => {
-    if (priority === 'high') return '#ef4444';
+  useEffect(() => {
+    loadNotifications();
+  }, [token]);
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'report_status_changed':
+        return 'document-text';
+      case 'event_created':
+      case 'event_ongoing':
+      case 'event_completed':
+        return 'calendar';
+      case 'report_processing_failed':
+        return 'warning';
+      default:
+        return 'settings';
+    }
+  };
+
+  const getNotificationColor = (type: string, severity: string) => {
+    if (severity === 'error') return '#ef4444';
+    if (severity === 'warning') return '#f59e0b';
     
     switch (type) {
-      case 'report':
+      case 'report_status_changed':
         return '#0ea5e9';
-      case 'event':
+      case 'event_created':
+      case 'event_ongoing':
+      case 'event_completed':
         return '#22c55e';
-      case 'achievement':
-        return '#f59e0b';
-      case 'system':
-        return '#6b7280';
       default:
         return '#6b7280';
     }
@@ -104,21 +88,38 @@ const NotificationsScreen = () => {
     return date.toLocaleDateString();
   };
 
-  const markAsRead = (id: string) => {
-    setNotifications(prev => 
-      prev.map(notif => 
-        notif.id === id ? { ...notif, read: true } : notif
-      )
-    );
+  const markAsRead = async (id: number) => {
+    if (!token) return;
+
+    try {
+      const target = notifications.find((notification) => notification.id === id);
+      await markNotificationReadState(token, id, !(target?.read_at));
+      await loadNotifications(selectedFilter === 'unread' ? false : undefined);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update notification');
+    }
   };
 
-  const markAllAsRead = () => {
-    setNotifications(prev => 
-      prev.map(notif => ({ ...notif, read: true }))
-    );
+  const markAllAsRead = async () => {
+    if (!token) return;
+
+    try {
+      await markAllNotificationsRead(token);
+      await loadNotifications(selectedFilter === 'unread' ? false : undefined);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to mark all as read');
+    }
   };
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const filterTypes = ['all', 'unread', 'event_created', 'event_ongoing', 'event_completed', 'report_status_changed', 'report_processing_failed'];
+
+  const filteredNotifications = selectedFilter === 'all'
+    ? notifications
+    : selectedFilter === 'unread'
+      ? notifications.filter((notification) => !notification.read_at)
+      : notifications.filter((notification) => notification.type === selectedFilter);
+
+  const isRead = (notification: NotificationItem) => !!notification.read_at;
 
   return (
     <ProtectedContent>
@@ -150,50 +151,77 @@ const NotificationsScreen = () => {
               )}
             </View>
 
+            {error && (
+              <View className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200">
+                <Text className="text-red-700 text-sm">{error}</Text>
+              </View>
+            )}
+
+            {/* Filter Tabs */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
+              <View className="flex-row space-x-2">
+                {filterTypes.map((type) => (
+                  <TouchableOpacity
+                    key={type}
+                    onPress={() => setSelectedFilter(type)}
+                    className={`px-4 py-2 rounded-full ${selectedFilter === type ? 'bg-waterbase-500' : 'bg-gray-100'}`}
+                  >
+                    <Text className={`text-sm font-medium ${selectedFilter === type ? 'text-white' : 'text-gray-700'}`}>
+                      {type === 'all' ? 'All' : type === 'unread' ? 'Unread' : getTypeLabel(type)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+
             {/* Notifications List */}
             <View className="space-y-3">
-              {notifications.map((notification) => (
+              {loading ? (
+                <View className="py-8">
+                  <Text className="text-center text-waterbase-600">Loading notifications...</Text>
+                </View>
+              ) : filteredNotifications.map((notification) => (
                 <TouchableOpacity
                   key={notification.id}
                   onPress={() => markAsRead(notification.id)}
                 >
-                  <Card className={`border-waterbase-200 ${!notification.read ? 'bg-waterbase-25' : 'bg-white'}`}>
+                  <Card className={`border-waterbase-200 ${!isRead(notification) ? 'bg-waterbase-25' : 'bg-white'}`}>
                     <CardContent className="p-4">
                       <View className="flex-row">
                         <View className="mr-4">
                           <View 
                             className="w-12 h-12 rounded-full flex items-center justify-center"
-                            style={{ backgroundColor: `${getNotificationColor(notification.type, notification.priority)}20` }}
+                            style={{ backgroundColor: `${getNotificationColor(notification.type, notification.severity)}20` }}
                           >
                             <Ionicons
                               name={getNotificationIcon(notification.type) as any}
                               size={24}
-                              color={getNotificationColor(notification.type, notification.priority)}
+                              color={getNotificationColor(notification.type, notification.severity)}
                             />
                           </View>
                         </View>
                         
                         <View className="flex-1">
                           <View className="flex-row justify-between items-start mb-2">
-                            <Text className={`text-base font-semibold ${!notification.read ? 'text-waterbase-950' : 'text-waterbase-800'}`}>
+                            <Text className={`text-base font-semibold ${!isRead(notification) ? 'text-waterbase-950' : 'text-waterbase-800'}`}>
                               {notification.title}
                             </Text>
                             
                             <View className="flex-row items-center ml-2">
-                              {notification.priority === 'high' && (
+                              {notification.severity === 'error' && (
                                 <View className="w-2 h-2 bg-red-500 rounded-full mr-2" />
                               )}
                               <Text className="text-xs text-waterbase-500">
-                                {formatTime(notification.timestamp)}
+                                {formatTime(notification.created_at)}
                               </Text>
                             </View>
                           </View>
                           
-                          <Text className={`text-sm leading-relaxed ${!notification.read ? 'text-waterbase-700' : 'text-waterbase-600'}`}>
+                          <Text className={`text-sm leading-relaxed ${!isRead(notification) ? 'text-waterbase-700' : 'text-waterbase-600'}`}>
                             {notification.message}
                           </Text>
                           
-                          {!notification.read && (
+                          {!isRead(notification) && (
                             <View className="w-2 h-2 bg-waterbase-500 rounded-full absolute -left-1 top-1" />
                           )}
                         </View>
@@ -205,7 +233,7 @@ const NotificationsScreen = () => {
             </View>
 
             {/* Empty State */}
-            {notifications.length === 0 && (
+            {!loading && filteredNotifications.length === 0 && (
               <Card className="border-waterbase-200">
                 <CardContent className="p-8 text-center">
                   <View className="w-16 h-16 bg-waterbase-100 rounded-full flex items-center justify-center mx-auto mb-4">

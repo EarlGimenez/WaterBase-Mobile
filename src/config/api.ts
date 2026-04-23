@@ -29,6 +29,9 @@ export const API_ENDPOINTS = {
   REPORTS: `${API_CONFIG.BASE_URL}/reports`,
   EVENTS: `${API_CONFIG.BASE_URL}/events`,
   COMMUNITY_FEED: `${API_CONFIG.BASE_URL}/community/feed`,
+  NOTIFICATIONS: `${API_CONFIG.BASE_URL}/notifications`,
+  NOTIFICATIONS_UNREAD_COUNT: `${API_CONFIG.BASE_URL}/notifications/unread-count`,
+  NOTIFICATIONS_MARK_ALL_READ: `${API_CONFIG.BASE_URL}/notifications/mark-all-read`,
   DASHBOARD: `${API_CONFIG.BASE_URL}/dashboard`,
   PREDICT: `${API_CONFIG.BASE_URL}/predict`,
 };
