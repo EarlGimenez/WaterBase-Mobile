@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
+import { registerPushNotificationsForUser, revokePushNotificationsForUser } from '../services/pushNotifications';
 
 export interface User {
   id: number;
@@ -47,6 +48,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setToken(storedToken);
         setUser(JSON.parse(storedUser));
         setIsGuest(false);
+
+        await registerPushNotificationsForUser(storedToken);
       } else if (guestMode === 'true') {
         setIsGuest(true);
       }
@@ -66,6 +69,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(token);
       setUser(user);
       setIsGuest(false);
+
+      await registerPushNotificationsForUser(token);
     } catch (error) {
       console.error('Error saving auth data:', error);
     }
@@ -75,6 +80,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // Make API call to logout using mobile-compatible URL
       if (token) {
+        await revokePushNotificationsForUser(token);
+
         console.log('Logout: Making API call to backend');
         await apiRequest(API_ENDPOINTS.LOGOUT, {
           method: 'POST',

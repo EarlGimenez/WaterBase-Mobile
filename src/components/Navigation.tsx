@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "../contexts/AuthContext";
@@ -18,11 +18,12 @@ export const Navigation: React.FC<NavigationProps> = ({
   rightActions,
 }) => {
   const navigation = useNavigation();
+  const isFocused = useIsFocused();
   const { token, isAuthenticated } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    if (!token || !isAuthenticated) {
+    if (!token || !isAuthenticated || !isFocused) {
       setUnreadCount(0);
       return;
     }
@@ -41,13 +42,13 @@ export const Navigation: React.FC<NavigationProps> = ({
     };
 
     refreshUnreadCount();
-    const intervalId = setInterval(refreshUnreadCount, 30000);
+    const intervalId = setInterval(refreshUnreadCount, 60000);
 
     return () => {
       mounted = false;
       clearInterval(intervalId);
     };
-  }, [token, isAuthenticated]);
+  }, [token, isAuthenticated, isFocused]);
 
   return (
     <View className="bg-white border-b-2 border-[#89CFEB] pt-2 pb-4 px-4">

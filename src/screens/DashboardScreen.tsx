@@ -36,9 +36,15 @@ type RecentReport = {
 
 type TrendPoint = {
   month: string;
-  total_reports: number;
-  verified_reports: number;
-  pending_reports: number;
+  reports?: number;
+  total_reports?: number;
+  verified_reports?: number;
+  pending_reports?: number;
+};
+
+type RegionPoint = {
+  area_of_responsibility: string;
+  count: number;
 };
 
 const DashboardScreen = () => {
@@ -46,6 +52,7 @@ const DashboardScreen = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentReports, setRecentReports] = useState<RecentReport[]>([]);
   const [monthlyTrends, setMonthlyTrends] = useState<TrendPoint[]>([]);
+  const [reportsByRegion, setReportsByRegion] = useState<RegionPoint[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -96,13 +103,17 @@ const DashboardScreen = () => {
           apiRequest(`${API_ENDPOINTS.DASHBOARD}/monthly-trends`, { method: "GET" }),
         ]);
 
+        const regionsResponse = await apiRequest(`${API_ENDPOINTS.DASHBOARD}/reports-by-region`, { method: "GET" });
+
         const statsPayload = await statsResponse.json();
         const recentReportsPayload = await recentReportsResponse.json();
         const trendsPayload = await trendsResponse.json();
+        const regionsPayload = await regionsResponse.json();
 
         setStats(statsPayload);
         setRecentReports(Array.isArray(recentReportsPayload) ? recentReportsPayload : []);
         setMonthlyTrends(Array.isArray(trendsPayload) ? trendsPayload : []);
+        setReportsByRegion(Array.isArray(regionsPayload) ? regionsPayload : []);
       } catch (fetchError) {
         console.error("Failed to fetch dashboard data", fetchError);
         setError("Live dashboard data is temporarily unavailable.");
@@ -129,8 +140,31 @@ const DashboardScreen = () => {
     return monthlyTrends.slice(-4).map((trend, index) => ({
       project: `${trend.month} cleanup snapshot`,
       organization: "Live backend trend",
-      progress: Math.min(100, Math.round((trend.verified_reports / Math.max(1, trend.total_reports)) * 100)),
+      progress: Math.min(
+        100,
+        Math.round((((trend.verified_reports ?? trend.reports ?? 0) as number) / Math.max(1, trend.total_reports ?? trend.reports ?? 1)) * 100)
+      ),
       status: index === monthlyTrends.length - 1 ? "Latest" : "Trend",
+    }));
+  }, [monthlyTrends]);
+
+  const topRegions = useMemo(() => {
+    const max = Math.max(1, ...reportsByRegion.map((region) => region.count || 0));
+    return reportsByRegion.slice(0, 5).map((region) => ({
+      ...region,
+      percent: Math.round(((region.count || 0) / max) * 100),
+    }));
+  }, [reportsByRegion]);
+
+  const trendBars = useMemo(() => {
+    const normalized = monthlyTrends.slice(-6).map((trend) => ({
+      month: trend.month,
+      value: trend.total_reports ?? trend.reports ?? 0,
+    }));
+    const max = Math.max(1, ...normalized.map((item) => item.value));
+    return normalized.map((item) => ({
+      ...item,
+      percent: Math.round((item.value / max) * 100),
     }));
   }, [monthlyTrends]);
 
@@ -309,12 +343,26 @@ const DashboardScreen = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <View className="h-32 bg-gradient-to-br from-waterbase-100 to-enviro-100 rounded-lg items-center justify-center">
-                  <Ionicons name="bar-chart" size={32} color="#0ea5e9" />
-                  <Text className="text-waterbase-600 mt-2 text-sm">
-                    Live backend stats now drive this section
-                  </Text>
-                </View>
+                {topRegions.length === 0 ? (
+                  <View className="h-32 bg-gradient-to-br from-waterbase-100 to-enviro-100 rounded-lg items-center justify-center">
+                    <Ionicons name="bar-chart" size={32} color="#0ea5e9" />
+                    <Text className="text-waterbase-600 mt-2 text-sm">No regional data yet</Text>
+                  </View>
+                ) : (
+                  <View className="space-y-2">
+                    {topRegions.map((region) => (
+                      <View key={region.area_of_responsibility || `region-${region.count}`}>
+                        <View className="flex-row justify-between mb-1">
+                          <Text className="text-xs text-waterbase-800" numberOfLines={1}>{region.area_of_responsibility || "Unspecified"}</Text>
+                          <Text className="text-xs text-waterbase-600">{region.count}</Text>
+                        </View>
+                        <View className="h-2 bg-waterbase-100 rounded-full">
+                          <View className="h-2 bg-waterbase-500 rounded-full" style={{ width: `${region.percent}%` }} />
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
               </CardContent>
             </Card>
 
@@ -328,12 +376,21 @@ const DashboardScreen = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <View className="h-32 bg-gradient-to-br from-waterbase-100 to-enviro-100 rounded-lg items-center justify-center">
-                  <Ionicons name="trending-up" size={32} color="#22c55e" />
-                  <Text className="text-waterbase-600 mt-2 text-sm">
-                    Monthly trends are synced from the web dashboard
-                  </Text>
-                </View>
+                {trendBars.length === 0 ? (
+                  <View className="h-32 bg-gradient-to-br from-waterbase-100 to-enviro-100 rounded-lg items-center justify-center">
+                    <Ionicons name="trending-up" size={32} color="#22c55e" />
+                    <Text className="text-waterbase-600 mt-2 text-sm">No monthly trends yet</Text>
+                  </View>
+                ) : (
+                  <View className="flex-row items-end justify-between h-32 px-1">
+                    {trendBars.map((bar) => (
+                      <View key={bar.month} className="items-center flex-1 mx-1">
+                        <View className="w-full bg-enviro-100 rounded-t" style={{ height: `${Math.max(10, bar.percent)}%` }} />
+                        <Text className="text-[10px] text-waterbase-700 mt-1" numberOfLines={1}>{bar.month.split(" ")[0]}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
               </CardContent>
             </Card>
           </View>

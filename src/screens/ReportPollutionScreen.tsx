@@ -26,6 +26,7 @@ import { OpenStreetMapSearchableSelect } from "../components/ui/OpenStreetMapSea
 import Navigation from "../components/Navigation";
 import ProtectedContent from "../components/ProtectedContent";
 import { useAuth } from "../contexts/AuthContext";
+import { useFeedback } from "../contexts/FeedbackContext";
 import { API_ENDPOINTS, apiRequest } from "../config/api";
 import { 
   getCurrentLocation, 
@@ -37,6 +38,7 @@ import {
 const ReportPollutionScreen = () => {
   const navigation = useNavigation();
   const { user } = useAuth();
+  const { showLoading, showProcessing, showSuccess, showError, hideFeedback } = useFeedback();
   
   // Form state
   const [formData, setFormData] = useState({
@@ -61,6 +63,25 @@ const ReportPollutionScreen = () => {
   const [verificationStatus, setVerificationStatus] = useState<'idle' | 'verifying' | 'success' | 'failed'>('idle');
   const [showLocationFields, setShowLocationFields] = useState(false);
   const [aiResults, setAiResults] = useState<any>(null);
+
+  const extractErrorMessage = (raw: string) => {
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.message === 'string' && parsed.message.trim()) {
+        return parsed.message;
+      }
+      if (parsed?.errors && typeof parsed.errors === 'object') {
+        const firstField = Object.values(parsed.errors)[0] as unknown;
+        if (Array.isArray(firstField) && firstField[0]) {
+          return String(firstField[0]);
+        }
+      }
+    } catch (_err) {
+      // Ignore JSON parse errors and fall back to raw text.
+    }
+
+    return raw || 'Failed to submit report';
+  };
 
   const pollutionTypes = [
     "Industrial Waste",
@@ -365,12 +386,12 @@ const ReportPollutionScreen = () => {
     // Basic validation first
     const basicValidation = validateBasicForm();
     if (basicValidation) {
-      Alert.alert('Validation Error', basicValidation);
+      showError('Validation Error', basicValidation);
       return;
     }
 
     if (!user?.id) {
-      Alert.alert('Authentication Error', 'Please log in to submit a report');
+      showError('Authentication Error', 'Please log in to submit a report');
       return;
     }
 
@@ -422,6 +443,7 @@ const ReportPollutionScreen = () => {
     }
 
     // If water is detected, proceed normally
+    showLoading('Submitting Report', 'Please wait while we process and verify your report...');
     await proceedWithSubmission();
   };
 
@@ -450,6 +472,7 @@ const ReportPollutionScreen = () => {
     setIsSubmitting(true);
     setSubmitStatus('idle');
     setShowSubmitModal(true);
+    showProcessing('Submitting Report', 'Please wait while we process and verify your report...');
 
     try {
       // Create form data for submission according to backend schema
@@ -519,6 +542,7 @@ const ReportPollutionScreen = () => {
         const responseData = await response.json();
         console.log('✅ Report submitted successfully:', responseData);
         setSubmitStatus('success');
+        showSuccess('Report Submitted', responseData?.message || 'Your submission is being processed.');
         setTimeout(() => {
           setShowSubmitModal(false);
           navigation.goBack();
@@ -526,12 +550,14 @@ const ReportPollutionScreen = () => {
       } else {
         const errorText = await response.text();
         console.error('❌ Submit failed:', errorText);
-        throw new Error(errorText || 'Failed to submit report');
+        throw new Error(extractErrorMessage(errorText));
       }
     } catch (error) {
       console.error('Submit error:', error);
       setSubmitStatus('error');
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to submit report');
+      const message = error instanceof Error ? error.message : 'Failed to submit report';
+      setErrorMessage(message);
+      showError('Submission Failed', message);
     } finally {
       setIsSubmitting(false);
     }
@@ -941,10 +967,10 @@ const ReportPollutionScreen = () => {
                 <View className="items-center">
                   <Ionicons name="checkmark-circle" size={48} color="#10B981" />
                   <Text className="text-center mt-4 text-gray-900 font-medium">
-                    Report Submitted!
+                    Submission Received
                   </Text>
                   <Text className="text-center mt-2 text-gray-600 text-sm">
-                    Thank you for helping protect our water sources
+                    Your submission is being processed. You will be notified once verification is complete.
                   </Text>
                 </View>
               </>

@@ -3,7 +3,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const isDev = __DEV__;
-const GIMENEZ_LAPTOP_IP = "10.231.38.15";
+const GIMENEZ_LAPTOP_IP = "192.168.0.25";
 // Your computer's IP address from ipconfig: 192.168.0.224
 const API_CONFIG = {
   BASE_URL: isDev 
@@ -20,16 +20,20 @@ export const API_ENDPOINTS = {
   REGISTER: `${API_CONFIG.BASE_URL}/register`,
   LOGOUT: `${API_CONFIG.BASE_URL}/logout`,
   USER_PROFILE: `${API_CONFIG.BASE_URL}/user/profile`,
+  USER_PUSH_TOKEN: `${API_CONFIG.BASE_URL}/user/push-token`,
   USER_ORGANIZATIONS: `${API_CONFIG.BASE_URL}/user/organizations`,
   USER_JOIN_REQUESTS: `${API_CONFIG.BASE_URL}/user/join-requests`,
   USER_JOINED_ORGANIZATIONS: `${API_CONFIG.BASE_URL}/user/joined-organizations`,
   USER_FOLLOWING_ORGANIZATIONS: `${API_CONFIG.BASE_URL}/user/following-organizations`,
   ORGANIZATIONS: `${API_CONFIG.BASE_URL}/organizations`,
   ORGANIZATIONS_DIRECTORY: `${API_CONFIG.BASE_URL}/organizations/directory`,
+  ORGANIZATION_JOIN_REQUEST: (organizationId: number, requestId: number) => `${API_CONFIG.BASE_URL}/organizations/${organizationId}/join-requests/${requestId}`,
   REPORTS: `${API_CONFIG.BASE_URL}/reports`,
   EVENTS: `${API_CONFIG.BASE_URL}/events`,
+  USER_EVENTS: `${API_CONFIG.BASE_URL}/user/events`,
   COMMUNITY_FEED: `${API_CONFIG.BASE_URL}/community/feed`,
   NOTIFICATIONS: `${API_CONFIG.BASE_URL}/notifications`,
+  NOTIFICATIONS_PREFERENCES: `${API_CONFIG.BASE_URL}/notifications/preferences`,
   NOTIFICATIONS_UNREAD_COUNT: `${API_CONFIG.BASE_URL}/notifications/unread-count`,
   NOTIFICATIONS_MARK_ALL_READ: `${API_CONFIG.BASE_URL}/notifications/mark-all-read`,
   DASHBOARD: `${API_CONFIG.BASE_URL}/dashboard`,

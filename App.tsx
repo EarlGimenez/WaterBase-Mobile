@@ -1,8 +1,9 @@
-import React from "react";
-import { NavigationContainer } from "@react-navigation/native";
+import React, { useEffect } from "react";
+import { NavigationContainer, createNavigationContainerRef } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import * as Notifications from "expo-notifications";
 
 // Import screens
 import HomeScreen from "./src/screens/HomeScreen";
@@ -22,10 +23,44 @@ import Layout from "./src/components/Layout";
 
 // Import contexts
 import { AuthProvider } from "./src/contexts/AuthContext";
+import { FeedbackProvider } from "./src/contexts/FeedbackContext";
 
 const Stack = createNativeStackNavigator();
+const navigationRef = createNavigationContainerRef<any>();
 
 export default function App() {
+  useEffect(() => {
+    const receivedSub = Notifications.addNotificationReceivedListener(() => {
+      // Foreground banner/list rendering is handled by the global Expo notification handler.
+    });
+
+    const responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
+      if (!navigationRef.isReady()) {
+        return;
+      }
+
+      const data = response.notification.request.content.data as Record<string, unknown>;
+      const targetType = typeof data?.target_type === 'string' ? data.target_type : null;
+
+      if (targetType === 'event') {
+        navigationRef.navigate('Community');
+        return;
+      }
+
+      if (targetType === 'report') {
+        navigationRef.navigate('MapView');
+        return;
+      }
+
+      navigationRef.navigate('Notifications');
+    });
+
+    return () => {
+      receivedSub.remove();
+      responseSub.remove();
+    };
+  }, []);
+
   const ScreenWithLayout = (Component: React.ComponentType) => {
     return (props: any) => (
       <Layout>
@@ -37,26 +72,28 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <NavigationContainer>
-          <Stack.Navigator
-            initialRouteName="Home"
-            screenOptions={{
-              headerShown: false,
-            }}
-          >
-            <Stack.Screen name="Home" component={ScreenWithLayout(HomeScreen)} />
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Register" component={RegisterScreen} />
-            <Stack.Screen name="Dashboard" component={ScreenWithLayout(DashboardScreen)} />
-            <Stack.Screen name="ReportPollution" component={ScreenWithLayout(ReportPollutionScreen)} />
-            <Stack.Screen name="MapView" component={ScreenWithLayout(MapViewScreen)} />
-            <Stack.Screen name="Community" component={ScreenWithLayout(CommunityScreen)} />
-            <Stack.Screen name="Profile" component={ScreenWithLayout(ProfileScreen)} />
-            <Stack.Screen name="OrganizationProfile" component={ScreenWithLayout(OrganizationProfileScreen)} />
-            <Stack.Screen name="Notifications" component={ScreenWithLayout(NotificationsScreen)} />
-            <Stack.Screen name="HowItWorks" component={ScreenWithLayout(HowItWorksScreen)} />
-          </Stack.Navigator>
-        </NavigationContainer>
+        <FeedbackProvider>
+          <NavigationContainer ref={navigationRef}>
+            <Stack.Navigator
+              initialRouteName="Home"
+              screenOptions={{
+                headerShown: false,
+              }}
+            >
+              <Stack.Screen name="Home" component={ScreenWithLayout(HomeScreen)} />
+              <Stack.Screen name="Login" component={LoginScreen} />
+              <Stack.Screen name="Register" component={RegisterScreen} />
+              <Stack.Screen name="Dashboard" component={ScreenWithLayout(DashboardScreen)} />
+              <Stack.Screen name="ReportPollution" component={ScreenWithLayout(ReportPollutionScreen)} />
+              <Stack.Screen name="MapView" component={ScreenWithLayout(MapViewScreen)} />
+              <Stack.Screen name="Community" component={ScreenWithLayout(CommunityScreen)} />
+              <Stack.Screen name="Profile" component={ScreenWithLayout(ProfileScreen)} />
+              <Stack.Screen name="OrganizationProfile" component={ScreenWithLayout(OrganizationProfileScreen)} />
+              <Stack.Screen name="Notifications" component={ScreenWithLayout(NotificationsScreen)} />
+              <Stack.Screen name="HowItWorks" component={ScreenWithLayout(HowItWorksScreen)} />
+            </Stack.Navigator>
+          </NavigationContainer>
+        </FeedbackProvider>
         <StatusBar style="auto" />
       </AuthProvider>
     </SafeAreaProvider>

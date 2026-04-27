@@ -12,10 +12,13 @@ import Navigation from "../components/Navigation";
 import ProtectedContent from "../components/ProtectedContent";
 import { useAuth } from "../contexts/AuthContext";
 import {
+  fetchNotificationPreferences,
   fetchNotifications,
   markAllNotificationsRead,
   markNotificationReadState,
   type NotificationItem,
+  type NotificationPreferences,
+  updateNotificationPreferences,
 } from "../services/notifications";
 
 const NotificationsScreen = () => {
@@ -24,6 +27,17 @@ const NotificationsScreen = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedFilter, setSelectedFilter] = useState('all');
+  const [prefsLoading, setPrefsLoading] = useState(false);
+  const [prefsSaving, setPrefsSaving] = useState(false);
+  const [preferences, setPreferences] = useState<NotificationPreferences>({
+    push_notifications_enabled: true,
+    report_updates: true,
+    event_reminders: true,
+    achievements: false,
+    quiet_hours_enabled: false,
+    quiet_hours_start: '22:00',
+    quiet_hours_end: '07:00',
+  });
 
   const unreadCount = useMemo(() => notifications.filter((n) => !n.read_at).length, [notifications]);
 
@@ -45,6 +59,45 @@ const NotificationsScreen = () => {
   useEffect(() => {
     loadNotifications();
   }, [token]);
+
+  const loadPreferences = async () => {
+    if (!token) return;
+
+    setPrefsLoading(true);
+    try {
+      const pref = await fetchNotificationPreferences(token);
+      setPreferences(pref);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load notification settings');
+    } finally {
+      setPrefsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPreferences();
+  }, [token]);
+
+  const savePreferences = async (patch: Partial<NotificationPreferences>) => {
+    if (!token) return;
+
+    setPrefsSaving(true);
+    setError(null);
+    try {
+      const updated = await updateNotificationPreferences(token, patch);
+      setPreferences(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save notification settings');
+    } finally {
+      setPrefsSaving(false);
+    }
+  };
+
+  const renderSwitch = (enabled: boolean) => (
+    <View className={`w-12 h-6 rounded-full p-1 ${enabled ? 'bg-waterbase-500' : 'bg-gray-300'}`}>
+      <View className={`w-4 h-4 bg-white rounded-full ${enabled ? 'ml-auto' : ''}`} />
+    </View>
+  );
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -74,6 +127,23 @@ const NotificationsScreen = () => {
         return '#22c55e';
       default:
         return '#6b7280';
+    }
+  };
+
+  const getTypeLabel = (type: string) => {
+    switch (type) {
+      case 'event_created':
+        return 'Event Created';
+      case 'event_ongoing':
+        return 'Event Ongoing';
+      case 'event_completed':
+        return 'Event Completed';
+      case 'report_status_changed':
+        return 'Report Status';
+      case 'report_processing_failed':
+        return 'Processing Failed';
+      default:
+        return type.replace(/_/g, ' ');
     }
   };
 
@@ -259,35 +329,91 @@ const NotificationsScreen = () => {
                 </CardHeader>
                 <CardContent className="px-4 pb-4">
                   <View className="space-y-4">
-                    <TouchableOpacity className="flex-row items-center justify-between py-2">
+                    <TouchableOpacity
+                      className="flex-row items-center justify-between py-2"
+                      disabled={prefsLoading || prefsSaving}
+                      onPress={() => savePreferences({
+                        push_notifications_enabled: !preferences.push_notifications_enabled,
+                      })}
+                    >
+                      <View className="flex-row items-center">
+                        <Ionicons name="notifications-outline" size={20} color="#0369a1" />
+                        <Text className="ml-3 text-waterbase-900 text-base">Push Notifications</Text>
+                      </View>
+                      {renderSwitch(preferences.push_notifications_enabled)}
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      className="flex-row items-center justify-between py-2"
+                      disabled={prefsLoading || prefsSaving || !preferences.push_notifications_enabled}
+                      onPress={() => savePreferences({ report_updates: !preferences.report_updates })}
+                    >
                       <View className="flex-row items-center">
                         <Ionicons name="document-text-outline" size={20} color="#0369a1" />
                         <Text className="ml-3 text-waterbase-900 text-base">Report Updates</Text>
                       </View>
-                      <View className="w-12 h-6 bg-waterbase-500 rounded-full p-1">
-                        <View className="w-4 h-4 bg-white rounded-full ml-auto" />
-                      </View>
+                      {renderSwitch(preferences.report_updates)}
                     </TouchableOpacity>
                     
-                    <TouchableOpacity className="flex-row items-center justify-between py-2">
+                    <TouchableOpacity
+                      className="flex-row items-center justify-between py-2"
+                      disabled={prefsLoading || prefsSaving || !preferences.push_notifications_enabled}
+                      onPress={() => savePreferences({ event_reminders: !preferences.event_reminders })}
+                    >
                       <View className="flex-row items-center">
                         <Ionicons name="calendar-outline" size={20} color="#0369a1" />
                         <Text className="ml-3 text-waterbase-900 text-base">Event Reminders</Text>
                       </View>
-                      <View className="w-12 h-6 bg-waterbase-500 rounded-full p-1">
-                        <View className="w-4 h-4 bg-white rounded-full ml-auto" />
-                      </View>
+                      {renderSwitch(preferences.event_reminders)}
                     </TouchableOpacity>
                     
-                    <TouchableOpacity className="flex-row items-center justify-between py-2">
+                    <TouchableOpacity
+                      className="flex-row items-center justify-between py-2"
+                      disabled={prefsLoading || prefsSaving || !preferences.push_notifications_enabled}
+                      onPress={() => savePreferences({ achievements: !preferences.achievements })}
+                    >
                       <View className="flex-row items-center">
                         <Ionicons name="trophy-outline" size={20} color="#0369a1" />
                         <Text className="ml-3 text-waterbase-900 text-base">Achievements</Text>
                       </View>
-                      <View className="w-12 h-6 bg-gray-300 rounded-full p-1">
-                        <View className="w-4 h-4 bg-white rounded-full" />
-                      </View>
+                      {renderSwitch(preferences.achievements)}
                     </TouchableOpacity>
+
+                    <TouchableOpacity
+                      className="flex-row items-center justify-between py-2"
+                      disabled={prefsLoading || prefsSaving || !preferences.push_notifications_enabled}
+                      onPress={() => savePreferences({ quiet_hours_enabled: !preferences.quiet_hours_enabled })}
+                    >
+                      <View className="flex-row items-center">
+                        <Ionicons name="moon-outline" size={20} color="#0369a1" />
+                        <Text className="ml-3 text-waterbase-900 text-base">Quiet Hours</Text>
+                      </View>
+                      {renderSwitch(preferences.quiet_hours_enabled)}
+                    </TouchableOpacity>
+
+                    {preferences.quiet_hours_enabled && (
+                      <View className="pt-2">
+                        <Text className="text-xs text-waterbase-600 mb-2">
+                          Current quiet window: {preferences.quiet_hours_start ?? '22:00'} - {preferences.quiet_hours_end ?? '07:00'}
+                        </Text>
+                        <View className="flex-row gap-2">
+                          <TouchableOpacity
+                            className="px-3 py-2 rounded-full bg-waterbase-100"
+                            disabled={prefsLoading || prefsSaving}
+                            onPress={() => savePreferences({ quiet_hours_start: '22:00', quiet_hours_end: '07:00' })}
+                          >
+                            <Text className="text-waterbase-700 text-xs">10 PM - 7 AM</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            className="px-3 py-2 rounded-full bg-waterbase-100"
+                            disabled={prefsLoading || prefsSaving}
+                            onPress={() => savePreferences({ quiet_hours_start: '21:00', quiet_hours_end: '06:00' })}
+                          >
+                            <Text className="text-waterbase-700 text-xs">9 PM - 6 AM</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
                   </View>
                 </CardContent>
               </Card>

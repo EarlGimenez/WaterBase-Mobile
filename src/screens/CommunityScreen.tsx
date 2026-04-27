@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, RefreshControl, ScrollView, View, Text, TouchableOpacity } from "react-native";
+import { ActivityIndicator, Alert, Modal, RefreshControl, ScrollView, View, Text, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
@@ -14,6 +14,7 @@ import Navigation from "../components/Navigation";
 import ProtectedContent from "../components/ProtectedContent";
 import { API_ENDPOINTS, apiRequest } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
+import { useFeedback } from "../contexts/FeedbackContext";
 
 type CommunityUpdate = {
   id: number;
@@ -76,6 +77,7 @@ type CleanupDrive = {
 const CommunityScreen = () => {
   const navigation = useNavigation();
   const { user } = useAuth();
+  const { showLoading, showProcessing, showSuccess, showError, hideFeedback } = useFeedback();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -85,7 +87,10 @@ const CommunityScreen = () => {
   const [orgJoinRequests, setOrgJoinRequests] = useState<JoinRequestRecord[]>([]);
   const [autoAcceptJoinRequests, setAutoAcceptJoinRequests] = useState(false);
   const [cleanupDrives, setCleanupDrives] = useState<CleanupDrive[]>([]);
+  const [joinedDriveIds, setJoinedDriveIds] = useState<number[]>([]);
   const [driveActionId, setDriveActionId] = useState<number | null>(null);
+  const [activeSection, setActiveSection] = useState<"drives" | "feed" | "organizations">("drives");
+  const [selectedDrive, setSelectedDrive] = useState<CleanupDrive | null>(null);
 
   const isOrganizationAccount = useMemo(() => {
     const role = (user?.role || "").toLowerCase();
@@ -114,20 +119,41 @@ const CommunityScreen = () => {
     }
   };
 
-  const getJoinRequestStatusByOrgId = useMemo(() => {
-    const map: Record<number, JoinRequestRecord["status"]> = {};
+  const joinRequestByOrgId = useMemo(() => {
+    const map: Record<number, JoinRequestRecord> = {};
+
     joinRequests.forEach((request) => {
-      map[request.organization_user_id] = request.status;
+      if (!map[request.organization_user_id]) {
+        map[request.organization_user_id] = request;
+      }
     });
+
     return map;
   }, [joinRequests]);
 
+  const getJoinRequestStatusByOrgId = useMemo(() => {
+    const map: Record<number, JoinRequestRecord["status"]> = {};
+    Object.entries(joinRequestByOrgId).forEach(([orgId, request]) => {
+      map[Number(orgId)] = request.status;
+    });
+    return map;
+  }, [joinRequestByOrgId]);
+
+  const joinedDriveIdSet = useMemo(() => new Set(joinedDriveIds), [joinedDriveIds]);
+
+  const handleActionError = (title: string, error: unknown) => {
+    const message = error instanceof Error ? error.message : "Please try again.";
+    Alert.alert(title, message);
+  };
+
   const fetchCommunityData = useCallback(async () => {
+    showLoading("Loading Community", "Fetching cleanup drives, organizations, and updates...");
     try {
-      const [feedResponse, directoryResponse, userRequestsResponse] = await Promise.all([
+      const [feedResponse, directoryResponse, userRequestsResponse, userEventsResponse] = await Promise.all([
         apiRequest(API_ENDPOINTS.COMMUNITY_FEED, { method: "GET" }),
         apiRequest(API_ENDPOINTS.ORGANIZATIONS_DIRECTORY, { method: "GET" }),
         apiRequest(API_ENDPOINTS.USER_JOIN_REQUESTS, { method: "GET" }),
+        apiRequest(API_ENDPOINTS.USER_EVENTS, { method: "GET" }),
       ]);
 
       const drivesResponse = await apiRequest(API_ENDPOINTS.EVENTS, { method: "GET" });
@@ -135,12 +161,18 @@ const CommunityScreen = () => {
       const feedPayload = await feedResponse.json();
       const directoryPayload = await directoryResponse.json();
       const userRequestsPayload = await userRequestsResponse.json();
+      const userEventsPayload = await userEventsResponse.json();
       const drivesPayload = await drivesResponse.json();
 
       setUpdates(Array.isArray(feedPayload?.data) ? feedPayload.data : []);
       setOrganizations(Array.isArray(directoryPayload?.data) ? directoryPayload.data : []);
       setJoinRequests(Array.isArray(userRequestsPayload?.data) ? userRequestsPayload.data : []);
       setCleanupDrives(Array.isArray(drivesPayload) ? drivesPayload : Array.isArray(drivesPayload?.data) ? drivesPayload.data : []);
+      setJoinedDriveIds(
+        (Array.isArray(userEventsPayload) ? userEventsPayload : [])
+          .map((event) => Number(event?.id))
+          .filter((eventId) => !Number.isNaN(eventId))
+      );
 
       if (user && isOrganizationAccount) {
         const [orgRequestsResponse, orgSettingsResponse] = await Promise.all([
@@ -156,11 +188,13 @@ const CommunityScreen = () => {
       }
     } catch (error) {
       console.error("Failed to fetch community data", error);
+      showError("Unable to load community data", error instanceof Error ? error.message : "Please try again.");
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
+      hideFeedback();
     }
-  }, [isOrganizationAccount, user]);
+  }, [hideFeedback, isOrganizationAccount, showError, showLoading, user]);
 
   useEffect(() => {
     fetchCommunityData();
@@ -172,6 +206,7 @@ const CommunityScreen = () => {
     }
 
     setIsSubmitting(true);
+    showProcessing("Updating Follow State", isFollowing ? "Removing follow status..." : "Following organization...");
     try {
       await apiRequest(`${API_ENDPOINTS.ORGANIZATIONS}/${organizationId}/follow`, {
         method: isFollowing ? "DELETE" : "POST",
@@ -179,8 +214,10 @@ const CommunityScreen = () => {
       await fetchCommunityData();
     } catch (error) {
       console.error("Failed to update follow state", error);
+      showError("Follow action failed", error instanceof Error ? error.message : "Please try again.");
     } finally {
       setIsSubmitting(false);
+      hideFeedback();
     }
   };
 
@@ -190,6 +227,7 @@ const CommunityScreen = () => {
     }
 
     setIsSubmitting(true);
+    showProcessing("Submitting Join Request", "Please wait while we send your request...");
     try {
       await apiRequest(`${API_ENDPOINTS.ORGANIZATIONS}/${organizationId}/join-requests`, {
         method: "POST",
@@ -198,6 +236,31 @@ const CommunityScreen = () => {
       await fetchCommunityData();
     } catch (error) {
       console.error("Failed to submit join request", error);
+      showError("Join request failed", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setIsSubmitting(false);
+      hideFeedback();
+    }
+  };
+
+  const handleCancelJoinRequest = async (organizationId: number) => {
+    const request = joinRequestByOrgId[organizationId];
+
+    if (isSubmitting || !request || request.status !== "pending") {
+      return;
+    }
+
+    setIsSubmitting(true);
+    showProcessing("Cancelling Request", "Removing your pending join request...");
+    try {
+      await apiRequest(API_ENDPOINTS.ORGANIZATION_JOIN_REQUEST(organizationId, request.id), {
+        method: "DELETE",
+      });
+      showSuccess("Request Cancelled", "You can request to join again at any time.");
+      await fetchCommunityData();
+    } catch (error) {
+      console.error("Failed to cancel join request", error);
+      showError("Unable to cancel request", error instanceof Error ? error.message : "Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -209,6 +272,7 @@ const CommunityScreen = () => {
     }
 
     setIsSubmitting(true);
+    showProcessing("Updating Request", "Applying your moderation action...");
     try {
       await apiRequest(`${API_ENDPOINTS.ORGANIZATIONS}/${user.id}/join-requests/${requestId}`, {
         method: "PATCH",
@@ -217,8 +281,10 @@ const CommunityScreen = () => {
       await fetchCommunityData();
     } catch (error) {
       console.error("Failed to update join request", error);
+      showError("Unable to update request", error instanceof Error ? error.message : "Please try again.");
     } finally {
       setIsSubmitting(false);
+      hideFeedback();
     }
   };
 
@@ -228,6 +294,7 @@ const CommunityScreen = () => {
     }
 
     setIsSubmitting(true);
+    showProcessing("Updating Settings", "Saving organization request settings...");
     try {
       await apiRequest(`${API_ENDPOINTS.ORGANIZATIONS}/${user.id}/join-settings`, {
         method: "PATCH",
@@ -236,8 +303,10 @@ const CommunityScreen = () => {
       await fetchCommunityData();
     } catch (error) {
       console.error("Failed to toggle auto-accept", error);
+      showError("Unable to update settings", error instanceof Error ? error.message : "Please try again.");
     } finally {
       setIsSubmitting(false);
+      hideFeedback();
     }
   };
 
@@ -248,17 +317,21 @@ const CommunityScreen = () => {
 
     setDriveActionId(driveId);
     setIsSubmitting(true);
+    showProcessing("Joining Cleanup Drive", "Please wait while we register your attendance...");
     try {
       await apiRequest(`${API_ENDPOINTS.EVENTS}/${driveId}/join`, {
         method: "POST",
         body: JSON.stringify({}),
       });
+      Alert.alert("Cleanup drive joined", "You are now part of this cleanup drive.");
       await fetchCommunityData();
     } catch (error) {
       console.error("Failed to join cleanup drive", error);
+      showError("Unable to join cleanup drive", error instanceof Error ? error.message : "Please try again.");
     } finally {
       setDriveActionId(null);
       setIsSubmitting(false);
+      hideFeedback();
     }
   };
 
@@ -290,6 +363,26 @@ const CommunityScreen = () => {
             }
           >
             <View className="py-6">
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-6">
+                <View className="flex-row space-x-2">
+                  {[
+                    { key: "drives", label: "Cleanup Drives" },
+                    { key: "feed", label: "Community Feed" },
+                    { key: "organizations", label: "Organizations" },
+                  ].map((section) => (
+                    <TouchableOpacity
+                      key={section.key}
+                      onPress={() => setActiveSection(section.key as "drives" | "feed" | "organizations")}
+                      className={`px-4 py-2 rounded-full ${activeSection === section.key ? "bg-waterbase-500" : "bg-gray-100"}`}
+                    >
+                      <Text className={`text-sm font-medium ${activeSection === section.key ? "text-white" : "text-gray-700"}`}>
+                        {section.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+
               {isOrganizationAccount && (
                 <Card className="border-waterbase-200 mb-6">
                   <CardHeader>
@@ -352,6 +445,7 @@ const CommunityScreen = () => {
                 </Card>
               )}
 
+              {activeSection === "drives" && (
               <Card className="border-waterbase-200 mb-6">
                 <CardHeader>
                   <CardTitle className="text-waterbase-950">Cleanup Drives</CardTitle>
@@ -372,6 +466,7 @@ const CommunityScreen = () => {
                         .map((drive) => {
                           const volunteers = drive.currentVolunteers ?? 0;
                           const slotsLeft = Math.max(drive.maxVolunteers - volunteers, 0);
+                          const isJoined = joinedDriveIdSet.has(drive.id);
 
                           return (
                             <View key={drive.id} className="p-4 rounded-xl border border-waterbase-200 bg-waterbase-50">
@@ -418,15 +513,23 @@ const CommunityScreen = () => {
                                 </View>
                               </View>
 
-                              <TouchableOpacity
-                                className="bg-waterbase-500 rounded-lg py-3 items-center"
-                                onPress={() => handleJoinCleanupDrive(drive.id)}
-                                disabled={isSubmitting || driveActionId === drive.id}
-                              >
-                                <Text className="text-white font-semibold">
-                                  {driveActionId === drive.id ? "Joining..." : "Join Cleanup Drive"}
-                                </Text>
-                              </TouchableOpacity>
+                              <View className="flex-row space-x-2">
+                                <TouchableOpacity
+                                  className="flex-1 bg-gray-100 rounded-lg py-3 items-center"
+                                  onPress={() => setSelectedDrive(drive)}
+                                >
+                                  <Text className="text-gray-800 font-semibold">View Details</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  className={`flex-1 rounded-lg py-3 items-center ${isJoined ? "bg-enviro-200" : "bg-waterbase-500"}`}
+                                  onPress={() => handleJoinCleanupDrive(drive.id)}
+                                  disabled={isSubmitting || driveActionId === drive.id || isJoined}
+                                >
+                                  <Text className={`${isJoined ? "text-enviro-900" : "text-white"} font-semibold`}>
+                                    {isJoined ? "Joined" : driveActionId === drive.id ? "Joining..." : "Join Cleanup Drive"}
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
                             </View>
                           );
                         })}
@@ -434,7 +537,9 @@ const CommunityScreen = () => {
                   )}
                 </CardContent>
               </Card>
+              )}
 
+              {activeSection === "feed" && (
               <View className="mb-6">
                 <Text className="text-lg font-semibold text-waterbase-950 mb-3">Community Feed</Text>
                 {updates.length === 0 ? (
@@ -481,7 +586,9 @@ const CommunityScreen = () => {
                   </View>
                 )}
               </View>
+              )}
 
+              {activeSection === "organizations" && (
               <Card className="border-waterbase-200 mb-6">
                 <CardHeader>
                   <CardTitle className="text-waterbase-950">Organizations</CardTitle>
@@ -490,7 +597,9 @@ const CommunityScreen = () => {
                 <CardContent>
                   <View className="space-y-3">
                     {organizations.map((org) => {
-                      const requestStatus = getJoinRequestStatusByOrgId[org.id];
+                      const request = joinRequestByOrgId[org.id];
+                      const requestStatus = request?.status;
+                      const canCancelRequest = requestStatus === "pending";
 
                       return (
                         <View
@@ -516,12 +625,12 @@ const CommunityScreen = () => {
                             </TouchableOpacity>
 
                             <TouchableOpacity
-                              className={`flex-1 px-3 py-2 rounded-lg items-center ${org.is_member ? "bg-enviro-100" : requestStatus === "pending" ? "bg-yellow-100" : "bg-enviro-500"}`}
-                              disabled={isSubmitting || org.is_member || requestStatus === "pending"}
-                              onPress={() => handleJoinRequest(org.id)}
+                              className={`flex-1 px-3 py-2 rounded-lg items-center ${org.is_member ? "bg-enviro-100" : canCancelRequest ? "bg-red-100" : "bg-enviro-500"}`}
+                              disabled={isSubmitting || org.is_member}
+                              onPress={() => (canCancelRequest ? handleCancelJoinRequest(org.id) : handleJoinRequest(org.id))}
                             >
-                              <Text className={`${org.is_member ? "text-enviro-800" : requestStatus === "pending" ? "text-yellow-800" : "text-white"} text-xs font-medium`}>
-                                {org.is_member ? "Member" : requestStatus === "pending" ? "Request Pending" : "Join"}
+                              <Text className={`${org.is_member ? "text-enviro-800" : canCancelRequest ? "text-red-800" : "text-white"} text-xs font-medium`}>
+                                {org.is_member ? "Member" : canCancelRequest ? "Cancel Request" : "Join"}
                               </Text>
                             </TouchableOpacity>
                           </View>
@@ -531,9 +640,33 @@ const CommunityScreen = () => {
                   </View>
                 </CardContent>
               </Card>
+              )}
             </View>
           </ScrollView>
         )}
+
+        <Modal visible={!!selectedDrive} transparent animationType="slide" onRequestClose={() => setSelectedDrive(null)}>
+          <View className="flex-1 bg-black/50 justify-end">
+            <View className="bg-white rounded-t-3xl p-5">
+              {selectedDrive && (
+                <>
+                  <Text className="text-xl font-bold text-waterbase-950 mb-1">{selectedDrive.title}</Text>
+                  <Text className="text-waterbase-600 mb-4">{selectedDrive.address}</Text>
+                  <Text className="text-sm text-waterbase-800 mb-2">{selectedDrive.description}</Text>
+                  <Text className="text-sm text-waterbase-700 mb-1">Date: {selectedDrive.date}</Text>
+                  <Text className="text-sm text-waterbase-700 mb-1">Time: {selectedDrive.time}</Text>
+                  <Text className="text-sm text-waterbase-700 mb-1">Duration: {selectedDrive.duration} hours</Text>
+                  <Text className="text-sm text-waterbase-700 mb-1">Volunteers: {selectedDrive.currentVolunteers ?? 0}/{selectedDrive.maxVolunteers}</Text>
+                  <Text className="text-sm text-waterbase-700 mb-4">Reward points: {selectedDrive.points}</Text>
+
+                  <TouchableOpacity className="bg-waterbase-500 rounded-lg py-3 items-center" onPress={() => setSelectedDrive(null)}>
+                    <Text className="text-white font-semibold">Close</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </ProtectedContent>
   );

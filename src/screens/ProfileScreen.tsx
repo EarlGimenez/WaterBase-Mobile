@@ -14,6 +14,7 @@ import {
 import Navigation from "../components/Navigation";
 import ProtectedContent from "../components/ProtectedContent";
 import { useAuth } from "../contexts/AuthContext";
+import { useFeedback } from "../contexts/FeedbackContext";
 import API_CONFIG, { API_ENDPOINTS, apiRequest } from "../config/api";
 import { SearchableLocationSelect } from "../components/ui/SearchableLocationSelect";
 
@@ -42,8 +43,9 @@ interface OrganizationSummary {
 }
 
 const ProfileScreen = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const { user, logout, login, token } = useAuth();
+  const { showLoading, showProcessing, showSuccess, showError, hideFeedback } = useFeedback();
   const [userStats, setUserStats] = useState<UserStats>({});
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('activity');
@@ -97,6 +99,7 @@ const ProfileScreen = () => {
 
   const handleProfilePhotoPress = async () => {
     try {
+      showLoading('Loading Image Picker', 'Choose an image to update your profile photo...');
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -108,13 +111,16 @@ const ProfileScreen = () => {
         await uploadProfilePhoto(result.assets[0].uri);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to pick image: ' + (error instanceof Error ? error.message : String(error)));
+      showError('Error', 'Failed to pick image: ' + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      hideFeedback();
     }
   };
 
   const uploadProfilePhoto = async (uri: string) => {
     try {
       setIsUploadingPhoto(true);
+      showProcessing('Uploading Photo', 'Saving your profile photo...');
 
       // Create FormData
       const formData = new FormData();
@@ -143,12 +149,12 @@ const ProfileScreen = () => {
           await login(token, result.user);
         }
 
-        Alert.alert('Success', 'Profile photo updated successfully!');
+        showSuccess('Success', 'Profile photo updated successfully!');
       } else {
         throw new Error('Failed to upload profile photo');
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to upload profile photo: ' + (error instanceof Error ? error.message : String(error)));
+      showError('Error', 'Failed to upload profile photo: ' + (error instanceof Error ? error.message : String(error)));
     } finally {
       setIsUploadingPhoto(false);
     }
@@ -156,19 +162,20 @@ const ProfileScreen = () => {
 
   const handleSaveProfile = async () => {
     if (!user || !token) {
-      Alert.alert('Error', 'You need to be logged in to update your profile.');
+      showError('Error', 'You need to be logged in to update your profile.');
       return;
     }
 
     const trimmedArea = selectedAreaOfResponsibility.trim();
 
     if (shouldRequireArea(user.role) && !trimmedArea) {
-      Alert.alert('Missing Location', 'Area of responsibility is required for your role.');
+      showError('Missing Location', 'Area of responsibility is required for your role.');
       return;
     }
 
     try {
       setIsSavingProfile(true);
+      showProcessing('Saving Profile', 'Updating your organization location...');
 
       const response = await apiRequest(API_ENDPOINTS.USER_PROFILE, {
         method: 'PUT',
@@ -184,9 +191,9 @@ const ProfileScreen = () => {
       }
 
       setIsEditProfileOpen(false);
-      Alert.alert('Success', 'Profile location updated successfully.');
+      showSuccess('Success', 'Profile location updated successfully.');
     } catch (error) {
-      Alert.alert('Error', 'Failed to update profile location: ' + (error instanceof Error ? error.message : String(error)));
+      showError('Error', 'Failed to update profile location: ' + (error instanceof Error ? error.message : String(error)));
     } finally {
       setIsSavingProfile(false);
     }
@@ -214,6 +221,7 @@ const ProfileScreen = () => {
   const fetchUserOrganizations = async () => {
     try {
       setIsOrganizationsLoading(true);
+      showLoading('Loading Organizations', 'Fetching your joined and followed organizations...');
       const response = await apiRequest(API_ENDPOINTS.USER_ORGANIZATIONS, {
         method: 'GET',
       });
@@ -223,8 +231,10 @@ const ProfileScreen = () => {
       setFollowedOrganizations(result.followedOrganizations || []);
     } catch (error) {
       console.error('Failed to load user organizations', error);
+      showError('Failed to load organizations', error instanceof Error ? error.message : 'Please try again.');
     } finally {
       setIsOrganizationsLoading(false);
+      hideFeedback();
     }
   };
 
@@ -235,7 +245,7 @@ const ProfileScreen = () => {
   }, [user]);
 
   const openOrganizationProfile = (organizationId: number) => {
-    navigation.navigate('OrganizationProfile' as never, { organizationId } as never);
+    navigation.navigate('OrganizationProfile', { organizationId });
   };
 
   const renderOrganizationsTab = (title: string, organizations: OrganizationSummary[], emptyMessage: string, badgeLabel: string) => {
