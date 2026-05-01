@@ -12,6 +12,7 @@ import {
   Alert,
   FlatList,
   Switch,
+  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -229,6 +230,13 @@ const MapViewScreen = () => {
   });
   const [selectedYear, setSelectedYear] = useState(2024);
   const [selectedParameters, setSelectedParameters] = useState<string[]>(["ph", "temperature"]);
+  const [researchDocuments, setResearchDocuments] = useState<Array<{
+    id: number;
+    title: string;
+    description: string | null;
+    file_path: string;
+    created_at: string;
+  }>>([]);
 
   // UI state
   const [showFilters, setShowFilters] = useState(false);
@@ -359,6 +367,24 @@ const MapViewScreen = () => {
       setWbsiData(null);
     }
   }, [selectedReport, reports]);
+
+  // Fetch research documents
+  useEffect(() => {
+    const fetchDocs = async () => {
+      try {
+        const response = await apiRequest(API_ENDPOINTS.RESEARCH_DOCUMENTS, {
+          method: 'GET',
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setResearchDocuments(data);
+        }
+      } catch (e) {
+        console.error('Failed to fetch research documents:', e);
+      }
+    };
+    fetchDocs();
+  }, [viewMode]);
 
   // Calculate distribution data for charts
   const getDistributionData = (): DistributionData[] => {
@@ -815,7 +841,7 @@ const MapViewScreen = () => {
                           <Text className="text-xs text-gray-500">2024</Text>
                         </View>
                       </CardContent>
-                    </Card>
+                      </Card>
 
                     {/* Parameter Filters */}
                     <Card>
@@ -848,9 +874,37 @@ const MapViewScreen = () => {
                     </Card>
                   </View>
                 )}
+
+                {researchDocuments.length > 0 && (
+                  <View className="mt-4">
+                    <Text className="text-lg font-bold text-gray-800 mb-3">Research Documents</Text>
+                    <FlatList
+                      data={researchDocuments}
+                      keyExtractor={(item) => item.id.toString()}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity onPress={() => Linking.openURL(item.file_path)}>
+                          <Card className="mb-2">
+                            <CardContent className="p-3">
+                              <View className="flex-row items-center">
+                                <Ionicons name="document-text" size={20} color="#0369A1" />
+                                <View className="ml-3 flex-1">
+                                  <Text className="text-sm font-medium text-gray-800">{item.title}</Text>
+                                  {item.description ? (
+                                    <Text className="text-xs text-gray-500 mt-1">{item.description}</Text>
+                                  ) : null}
+                                </View>
+                              </View>
+                            </CardContent>
+                          </Card>
+                        </TouchableOpacity>
+                      )}
+                      scrollEnabled={false}
+                    />
+                  </View>
+                )}
               </View>
             )}
-            </ScrollView>
+          </ScrollView>
           ) : (
             <View className="flex-1 items-center justify-start px-4 pt-0 pb-2" style={{ backgroundColor: "rgba(255,255,255,0.88)" }}>
               <View className="h-3 overflow-hidden">

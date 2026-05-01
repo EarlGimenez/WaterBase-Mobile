@@ -84,8 +84,6 @@ const CommunityScreen = () => {
   const [updates, setUpdates] = useState<CommunityUpdate[]>([]);
   const [organizations, setOrganizations] = useState<OrganizationDirectoryEntry[]>([]);
   const [joinRequests, setJoinRequests] = useState<JoinRequestRecord[]>([]);
-  const [orgJoinRequests, setOrgJoinRequests] = useState<JoinRequestRecord[]>([]);
-  const [autoAcceptJoinRequests, setAutoAcceptJoinRequests] = useState(false);
   const [cleanupDrives, setCleanupDrives] = useState<CleanupDrive[]>([]);
   const [joinedDriveIds, setJoinedDriveIds] = useState<number[]>([]);
   const [driveActionId, setDriveActionId] = useState<number | null>(null);
@@ -95,6 +93,16 @@ const CommunityScreen = () => {
   const isOrganizationAccount = useMemo(() => {
     const role = (user?.role || "").toLowerCase();
     return role === "ngo" || role === "lgu" || role === "researcher";
+  }, [user?.role]);
+
+  const isVolunteer = useMemo(() => {
+    const role = (user?.role || "").toLowerCase();
+    return role === "volunteer";
+  }, [user?.role]);
+
+  const canJoinOrganizations = useMemo(() => {
+    const role = (user?.role || "").toLowerCase();
+    return role !== "ngo" && role !== "lgu" && role !== "admin";
   }, [user?.role]);
 
   const getUpdateIcon = (type: string) => {
@@ -173,19 +181,6 @@ const CommunityScreen = () => {
           .map((event) => Number(event?.id))
           .filter((eventId) => !Number.isNaN(eventId))
       );
-
-      if (user && isOrganizationAccount) {
-        const [orgRequestsResponse, orgSettingsResponse] = await Promise.all([
-          apiRequest(`${API_ENDPOINTS.ORGANIZATIONS}/${user.id}/join-requests`, { method: "GET" }),
-          apiRequest(`${API_ENDPOINTS.ORGANIZATIONS}/${user.id}/join-settings`, { method: "GET" }),
-        ]);
-
-        const orgRequestsPayload = await orgRequestsResponse.json();
-        const orgSettingsPayload = await orgSettingsResponse.json();
-
-        setOrgJoinRequests(Array.isArray(orgRequestsPayload?.data) ? orgRequestsPayload.data : []);
-        setAutoAcceptJoinRequests(!!orgSettingsPayload?.auto_accept_join_requests);
-      }
     } catch (error) {
       console.error("Failed to fetch community data", error);
       showError("Unable to load community data", error instanceof Error ? error.message : "Please try again.");
@@ -194,7 +189,7 @@ const CommunityScreen = () => {
       setIsRefreshing(false);
       hideFeedback();
     }
-  }, [hideFeedback, isOrganizationAccount, showError, showLoading, user]);
+  }, [hideFeedback, showError, showLoading, user]);
 
   useEffect(() => {
     fetchCommunityData();
@@ -266,52 +261,10 @@ const CommunityScreen = () => {
     }
   };
 
-  const handleUpdateJoinRequest = async (requestId: number, status: "accepted" | "rejected") => {
-    if (isSubmitting || !user) {
-      return;
-    }
 
-    setIsSubmitting(true);
-    showProcessing("Updating Request", "Applying your moderation action...");
-    try {
-      await apiRequest(`${API_ENDPOINTS.ORGANIZATIONS}/${user.id}/join-requests/${requestId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status }),
-      });
-      await fetchCommunityData();
-    } catch (error) {
-      console.error("Failed to update join request", error);
-      showError("Unable to update request", error instanceof Error ? error.message : "Please try again.");
-    } finally {
-      setIsSubmitting(false);
-      hideFeedback();
-    }
-  };
-
-  const handleToggleAutoAccept = async () => {
-    if (isSubmitting || !user) {
-      return;
-    }
-
-    setIsSubmitting(true);
-    showProcessing("Updating Settings", "Saving organization request settings...");
-    try {
-      await apiRequest(`${API_ENDPOINTS.ORGANIZATIONS}/${user.id}/join-settings`, {
-        method: "PATCH",
-        body: JSON.stringify({ auto_accept_join_requests: !autoAcceptJoinRequests }),
-      });
-      await fetchCommunityData();
-    } catch (error) {
-      console.error("Failed to toggle auto-accept", error);
-      showError("Unable to update settings", error instanceof Error ? error.message : "Please try again.");
-    } finally {
-      setIsSubmitting(false);
-      hideFeedback();
-    }
-  };
 
   const handleJoinCleanupDrive = async (driveId: number) => {
-    if (isSubmitting || driveActionId === driveId) {
+    if (!isVolunteer || isSubmitting || driveActionId === driveId) {
       return;
     }
 
@@ -328,6 +281,31 @@ const CommunityScreen = () => {
     } catch (error) {
       console.error("Failed to join cleanup drive", error);
       showError("Unable to join cleanup drive", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setDriveActionId(null);
+      setIsSubmitting(false);
+      hideFeedback();
+    }
+  };
+
+  const handleLeaveCleanupDrive = async (driveId: number) => {
+    if (!isVolunteer || isSubmitting || driveActionId === driveId) {
+      return;
+    }
+
+    setDriveActionId(driveId);
+    setIsSubmitting(true);
+    showProcessing("Leaving Cleanup Drive", "Please wait while we cancel your participation...");
+    try {
+      await apiRequest(`${API_ENDPOINTS.EVENTS}/${driveId}/leave`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      Alert.alert("Participation cancelled", "You have left this cleanup drive.");
+      await fetchCommunityData();
+    } catch (error) {
+      console.error("Failed to leave cleanup drive", error);
+      showError("Unable to leave cleanup drive", error instanceof Error ? error.message : "Please try again.");
     } finally {
       setDriveActionId(null);
       setIsSubmitting(false);
@@ -383,67 +361,7 @@ const CommunityScreen = () => {
                 </View>
               </ScrollView>
 
-              {isOrganizationAccount && (
-                <Card className="border-waterbase-200 mb-6">
-                  <CardHeader>
-                    <CardTitle className="text-waterbase-950">Organization Controls</CardTitle>
-                    <CardDescription className="text-waterbase-600">Manage how members join your organization.</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <TouchableOpacity
-                      className="flex-row items-center justify-between mb-4 p-3 bg-waterbase-50 rounded-lg"
-                      onPress={handleToggleAutoAccept}
-                      disabled={isSubmitting}
-                    >
-                      <View>
-                        <Text className="font-semibold text-waterbase-950">Auto-accept join requests</Text>
-                        <Text className="text-xs text-waterbase-600 mt-1">
-                          {autoAcceptJoinRequests
-                            ? "New requests are accepted automatically and users become members immediately."
-                            : "Requests stay pending until you review them."}
-                        </Text>
-                      </View>
-                      <View className={`w-12 h-7 rounded-full p-1 ${autoAcceptJoinRequests ? "bg-enviro-500" : "bg-gray-300"}`}>
-                        <View className={`w-5 h-5 rounded-full bg-white ${autoAcceptJoinRequests ? "ml-auto" : "ml-0"}`} />
-                      </View>
-                    </TouchableOpacity>
 
-                    <Text className="font-semibold text-waterbase-950 mb-2">Pending join requests</Text>
-                    {orgJoinRequests.filter((request) => request.status === "pending").length === 0 ? (
-                      <Text className="text-waterbase-600">No pending requests.</Text>
-                    ) : (
-                      <View className="space-y-3">
-                        {orgJoinRequests
-                          .filter((request) => request.status === "pending")
-                          .map((request) => (
-                            <View key={request.id} className="p-3 bg-white rounded-lg border border-waterbase-200">
-                              <Text className="font-medium text-waterbase-950">
-                                {request.requester ? `${request.requester.firstName} ${request.requester.lastName}` : `User #${request.requester_user_id}`}
-                              </Text>
-                              <Text className="text-xs text-waterbase-600 mb-3">{request.requester?.email || "No email available"}</Text>
-                              <View className="flex-row space-x-2">
-                                <TouchableOpacity
-                                  className="flex-1 bg-enviro-500 rounded-lg py-2 items-center"
-                                  onPress={() => handleUpdateJoinRequest(request.id, "accepted")}
-                                  disabled={isSubmitting}
-                                >
-                                  <Text className="text-white font-medium">Accept</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  className="flex-1 bg-red-500 rounded-lg py-2 items-center"
-                                  onPress={() => handleUpdateJoinRequest(request.id, "rejected")}
-                                  disabled={isSubmitting}
-                                >
-                                  <Text className="text-white font-medium">Reject</Text>
-                                </TouchableOpacity>
-                              </View>
-                            </View>
-                          ))}
-                      </View>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
 
               {activeSection === "drives" && (
               <Card className="border-waterbase-200 mb-6">
@@ -520,15 +438,19 @@ const CommunityScreen = () => {
                                 >
                                   <Text className="text-gray-800 font-semibold">View Details</Text>
                                 </TouchableOpacity>
-                                <TouchableOpacity
-                                  className={`flex-1 rounded-lg py-3 items-center ${isJoined ? "bg-enviro-200" : "bg-waterbase-500"}`}
-                                  onPress={() => handleJoinCleanupDrive(drive.id)}
-                                  disabled={isSubmitting || driveActionId === drive.id || isJoined}
-                                >
-                                  <Text className={`${isJoined ? "text-enviro-900" : "text-white"} font-semibold`}>
-                                    {isJoined ? "Joined" : driveActionId === drive.id ? "Joining..." : "Join Cleanup Drive"}
-                                  </Text>
-                                </TouchableOpacity>
+                                {isVolunteer && (
+                                  <TouchableOpacity
+                                    className={`flex-1 rounded-lg py-3 items-center ${isJoined ? "bg-enviro-200" : "bg-waterbase-500"}`}
+                                    onPress={() => (isJoined ? handleLeaveCleanupDrive(drive.id) : handleJoinCleanupDrive(drive.id))}
+                                    disabled={isSubmitting || driveActionId === drive.id}
+                                  >
+                                    <Text className={`${isJoined ? "text-enviro-900" : "text-white"} font-semibold`}>
+                                      {isJoined
+                                        ? (driveActionId === drive.id ? "Cancelling..." : "Cancel Participation")
+                                        : (driveActionId === drive.id ? "Joining..." : "Join Cleanup Drive")}
+                                    </Text>
+                                  </TouchableOpacity>
+                                )}
                               </View>
                             </View>
                           );
@@ -624,15 +546,17 @@ const CommunityScreen = () => {
                               </Text>
                             </TouchableOpacity>
 
-                            <TouchableOpacity
-                              className={`flex-1 px-3 py-2 rounded-lg items-center ${org.is_member ? "bg-enviro-100" : canCancelRequest ? "bg-red-100" : "bg-enviro-500"}`}
-                              disabled={isSubmitting || org.is_member}
-                              onPress={() => (canCancelRequest ? handleCancelJoinRequest(org.id) : handleJoinRequest(org.id))}
-                            >
-                              <Text className={`${org.is_member ? "text-enviro-800" : canCancelRequest ? "text-red-800" : "text-white"} text-xs font-medium`}>
-                                {org.is_member ? "Member" : canCancelRequest ? "Cancel Request" : "Join"}
-                              </Text>
-                            </TouchableOpacity>
+                            {canJoinOrganizations && (
+                              <TouchableOpacity
+                                className={`flex-1 px-3 py-2 rounded-lg items-center ${org.is_member ? "bg-enviro-100" : canCancelRequest ? "bg-red-100" : "bg-enviro-500"}`}
+                                disabled={isSubmitting || org.is_member}
+                                onPress={() => (canCancelRequest ? handleCancelJoinRequest(org.id) : handleJoinRequest(org.id))}
+                              >
+                                <Text className={`${org.is_member ? "text-enviro-800" : canCancelRequest ? "text-red-800" : "text-white"} text-xs font-medium`}>
+                                  {org.is_member ? "Member" : canCancelRequest ? "Cancel Request" : "Join"}
+                                </Text>
+                              </TouchableOpacity>
+                            )}
                           </View>
                         </View>
                       );

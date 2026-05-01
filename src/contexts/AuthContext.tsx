@@ -12,6 +12,7 @@ export interface User {
   organization?: string;
   areaOfResponsibility?: string;
   profile_photo?: string;
+  createdAt?: string;
 }
 
 interface AuthContextType {

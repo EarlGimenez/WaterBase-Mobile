@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import { View, Text, TouchableOpacity, Image } from "react-native";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "../contexts/AuthContext";
 import { fetchUnreadCount } from "../services/notifications";
+import { resolveProfilePhotoUri } from "../utils/imageUrl";
 
 interface NavigationProps {
   title?: string;
@@ -19,8 +20,9 @@ export const Navigation: React.FC<NavigationProps> = ({
 }) => {
   const navigation = useNavigation();
   const isFocused = useIsFocused();
-  const { token, isAuthenticated } = useAuth();
+  const { token, isAuthenticated, user } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
     if (!token || !isAuthenticated || !isFocused) {
@@ -44,11 +46,52 @@ export const Navigation: React.FC<NavigationProps> = ({
     refreshUnreadCount();
     const intervalId = setInterval(refreshUnreadCount, 60000);
 
-    return () => {
+      return () => {
       mounted = false;
       clearInterval(intervalId);
     };
   }, [token, isAuthenticated, isFocused]);
+
+  useEffect(() => {
+    setImageError(false);
+  }, [user?.profile_photo, isFocused]);
+
+  const getInitials = (): string => {
+    const firstInitial = user?.firstName?.trim().charAt(0) || "";
+    const lastInitial = user?.lastName?.trim().charAt(0) || "";
+    return `${firstInitial}${lastInitial}`.toUpperCase() || "?";
+  };
+
+  const renderProfileAvatar = () => {
+    const photoUrl = resolveProfilePhotoUri(user?.profile_photo);
+    const showImage = !!photoUrl && !imageError;
+
+    return (
+      <View className="w-7 h-7 rounded-full overflow-hidden">
+        <LinearGradient
+          colors={['#0ea5e9', '#22c55e']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          className="absolute inset-0 w-7 h-7 rounded-full items-center justify-center"
+        >
+          {user?.firstName || user?.lastName ? (
+            <Text className="text-xs font-bold text-white">{getInitials()}</Text>
+          ) : (
+            <Ionicons name="person" size={17} color="white" />
+          )}
+        </LinearGradient>
+        {showImage && (
+          <Image
+            key={photoUrl}
+            source={{ uri: photoUrl }}
+            className="absolute inset-0 w-7 h-7 rounded-full"
+            resizeMode="cover"
+            onError={() => setImageError(true)}
+          />
+        )}
+      </View>
+    );
+  };
 
   return (
     <View className="bg-white border-b-2 border-[#89CFEB] pt-2 pb-4 px-4">
@@ -100,9 +143,7 @@ export const Navigation: React.FC<NavigationProps> = ({
             className="p-3"
             style={{ minWidth: 44, minHeight: 44 }}
           >
-            <View className="w-7 h-7 bg-waterbase-100 rounded-full items-center justify-center">
-              <Ionicons name="person" size={18} color="#0369a1" />
-            </View>
+            {renderProfileAvatar()}
           </TouchableOpacity>
 
           {rightActions && (

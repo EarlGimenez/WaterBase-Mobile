@@ -66,8 +66,17 @@ const LoginScreen = () => {
       // Use AuthContext login method with real backend data
       await login(data.access_token, data.user);
       
-      // Navigate to dashboard after successful login
-      navigation.navigate("Dashboard" as never);
+      // Show success feedback
+      Alert.alert(
+        "Success",
+        "Login successful! Welcome back.",
+        [
+          {
+            text: "OK",
+            onPress: () => navigation.navigate("Dashboard" as never),
+          },
+        ]
+      );
     } catch (error) {
       console.error("Login error:", error);
       if (error instanceof Error) {

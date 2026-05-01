@@ -14,9 +14,11 @@ import ReportPollutionScreen from "./src/screens/ReportPollutionScreen";
 import MapViewScreen from "./src/screens/MapViewScreen";
 import CommunityScreen from "./src/screens/CommunityScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
+import OrganizerPortalScreen from "./src/screens/OrganizerPortalScreen";
 import NotificationsScreen from "./src/screens/NotificationsScreen";
 import HowItWorksScreen from "./src/screens/HowItWorksScreen";
 import OrganizationProfileScreen from "./src/screens/OrganizationProfileScreen";
+import AdminModerationScreen from "./src/screens/AdminModerationScreen";
 
 // Import components
 import Layout from "./src/components/Layout";
@@ -87,10 +89,12 @@ export default function App() {
               <Stack.Screen name="ReportPollution" component={ScreenWithLayout(ReportPollutionScreen)} />
               <Stack.Screen name="MapView" component={ScreenWithLayout(MapViewScreen)} />
               <Stack.Screen name="Community" component={ScreenWithLayout(CommunityScreen)} />
+              <Stack.Screen name="OrganizerPortal" component={ScreenWithLayout(OrganizerPortalScreen)} />
               <Stack.Screen name="Profile" component={ScreenWithLayout(ProfileScreen)} />
               <Stack.Screen name="OrganizationProfile" component={ScreenWithLayout(OrganizationProfileScreen)} />
               <Stack.Screen name="Notifications" component={ScreenWithLayout(NotificationsScreen)} />
               <Stack.Screen name="HowItWorks" component={ScreenWithLayout(HowItWorksScreen)} />
+              <Stack.Screen name="AdminModeration" component={ScreenWithLayout(AdminModerationScreen)} />
             </Stack.Navigator>
           </NavigationContainer>
         </FeedbackProvider>

@@ -53,10 +53,11 @@ const FooterButton: React.FC<FooterButtonProps> = ({
       </View>
     )}
     <Text
-      className={`text-xs mt-2 text-center px-1 ${
+      className={`text-xs mt-2 text-center w-full ${
         isActive ? 'text-waterbase-600 font-medium' : 'text-gray-500'
       }`}
-      style={{ lineHeight: 14 }}
+      style={{ lineHeight: 14, fontSize: 11 }}
+      numberOfLines={1}
     >
       {label}
     </Text>
@@ -66,7 +67,7 @@ const FooterButton: React.FC<FooterButtonProps> = ({
 const Footer: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute();
-  const { isAuthenticated, isGuest } = useAuth();
+  const { isAuthenticated, isGuest, user } = useAuth();
   
   const currentRoute = route.name;
 
@@ -102,14 +103,18 @@ const Footer: React.FC = () => {
     );
   };
 
-  const footerButtons = [
-    {
-      icon: 'home',
+  const role = (user?.role || '').toLowerCase();
+  const isAdmin = role === 'admin';
+  const isOrganizer = role === 'ngo' || role === 'lgu' || role === 'researcher';
+
+  const baseButtons = [
+    ...(isAuthenticated && !isGuest ? [] : [{
+      icon: 'home' as const,
       label: 'Home',
       screenName: 'Home',
       requireAuth: false,
       onPress: () => navigation.navigate('Home' as never)
-    },
+    }]),
     {
       icon: 'map',
       label: 'Live Map',
@@ -119,31 +124,52 @@ const Footer: React.FC = () => {
     },
     {
       icon: 'warning',
-      label: 'Report',
-      screenName: 'ReportPollution',
-      requireAuth: true,
-      onPress: () => handleProtectedNavigation('ReportPollution', 'pollution reporting')
+      label: isAdmin ? 'Moderate' : 'Report',
+      screenName: isAdmin ? 'AdminModeration' : 'ReportPollution',
+      requireAuth: !isAdmin,
+      onPress: () => {
+        if (isAdmin) {
+          navigation.navigate('AdminModeration' as never);
+          return;
+        }
+        handleProtectedNavigation('ReportPollution', 'pollution reporting');
+      }
     },
     {
       icon: 'analytics',
       label: 'Dashboard',
       screenName: 'Dashboard',
-      requireAuth: false, // Dashboard is now free for guests
+      requireAuth: false,
       onPress: () => navigation.navigate('Dashboard' as never)
-    },
-    {
-      icon: isAuthenticated && !isGuest ? 'people' : 'person-add',
-      label: isAuthenticated && !isGuest ? 'Community' : 'Sign Up',
-      screenName: isAuthenticated && !isGuest ? 'Community' : 'Register',
-      requireAuth: isAuthenticated && !isGuest ? true : false,
-      onPress: () => {
-        if (isAuthenticated && !isGuest) {
-          handleProtectedNavigation('Community', 'community features');
-        } else {
-          handleSignupNavigation();
-        }
+    }
+  ];
+
+  const communityButton = {
+    icon: isAuthenticated && !isGuest ? 'people' : 'person-add',
+    label: isAuthenticated && !isGuest ? 'Community' : 'Sign Up',
+    screenName: isAuthenticated && !isGuest ? 'Community' : 'Register',
+    requireAuth: isAuthenticated && !isGuest ? true : false,
+    onPress: () => {
+      if (isAuthenticated && !isGuest) {
+        handleProtectedNavigation('Community', 'community features');
+      } else {
+        handleSignupNavigation();
       }
     }
+  };
+
+  const organizerButton = isAuthenticated && !isGuest && isOrganizer ? {
+    icon: 'business' as const,
+    label: 'Organizer',
+    screenName: 'OrganizerPortal',
+    requireAuth: true,
+    onPress: () => handleProtectedNavigation('OrganizerPortal', 'organizer portal')
+  } : null;
+
+  const footerButtons = [
+    ...baseButtons,
+    communityButton,
+    ...(organizerButton ? [organizerButton] : [])
   ];
 
   // Don't show footer on Login screen

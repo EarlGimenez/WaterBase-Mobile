@@ -67,45 +67,43 @@ export const fetchAddressFromCoordinates = async (lat: number, lon: number): Pro
 /**
  * Get current location using device GPS
  */
-export const getCurrentLocation = (): Promise<{ latitude: number; longitude: number }> => {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error('Geolocation is not supported by this device.'));
-      return;
+export const getCurrentLocation = async (): Promise<{ latitude: number; longitude: number }> => {
+  try {
+    // Request location permissions if not already granted
+    const { status } = await import('expo-location').then(Location => Location.requestForegroundPermissionsAsync());
+
+    if (status !== 'granted') {
+      throw new Error('Location access denied. Please enable location permissions in your device settings.');
     }
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        resolve({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        });
-      },
-      (error) => {
-        console.error('Geolocation error:', error);
-        let errorMessage = 'Could not get current location.';
-        
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            errorMessage = 'Location access denied. Please enable location permissions.';
-            break;
-          case error.POSITION_UNAVAILABLE:
-            errorMessage = 'Location information is unavailable.';
-            break;
-          case error.TIMEOUT:
-            errorMessage = 'Location request timed out.';
-            break;
-        }
-        
-        reject(new Error(errorMessage));
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 60000
+    // Get current position
+    const Location = await import('expo-location');
+    const location = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.High,
+      timeout: 15000,
+      maximumAge: 60000
+    });
+
+    return {
+      latitude: location.coords.latitude,
+      longitude: location.coords.longitude,
+    };
+  } catch (error) {
+    console.error('Geolocation error:', error);
+
+    if (error instanceof Error) {
+      // Re-throw Expo Location errors with user-friendly messages
+      if (error.message.includes('permission')) {
+        throw new Error('Location access denied. Please enable location permissions in your device settings.');
+      } else if (error.message.includes('timeout')) {
+        throw new Error('Location request timed out. Please try again.');
+      } else if (error.message.includes('unavailable')) {
+        throw new Error('Location information is unavailable. Please check your GPS settings.');
       }
-    );
-  });
+    }
+
+    throw new Error('Could not get current location. Please try again or enter location manually.');
+  }
 };
 
 /**

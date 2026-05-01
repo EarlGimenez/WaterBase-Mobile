@@ -9,12 +9,16 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
+  FlatList,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import * as DocumentPicker from 'expo-document-picker';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Button } from "../components/ui/Button";
 import {
   Card,
@@ -55,21 +59,62 @@ const ReportPollutionScreen = () => {
   // UI state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
-  const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  const [errorMessage, setErrorMessage] = useState('');
+  const [submitStatus, setSubmitStatus] = useState<'idle' | 'success'>('idle');
+  const [showCsvHelp, setShowCsvHelp] = useState(false);
   
   // AI and verification state
   const [aiScanStatus, setAiScanStatus] = useState<'idle' | 'scanning' | 'success' | 'error'>('idle');
   const [verificationStatus, setVerificationStatus] = useState<'idle' | 'verifying' | 'success' | 'failed'>('idle');
   const [showLocationFields, setShowLocationFields] = useState(false);
   const [aiResults, setAiResults] = useState<any>(null);
+  const [reportMode, setReportMode] = useState<'ai' | 'manual'>('ai');
+  const [csvFile, setCsvFile] = useState<any>(null);
+  const [csvUploading, setCsvUploading] = useState(false);
+  const [csvResult, setCsvResult] = useState<{
+    imported: number;
+    errors: Array<{ row: number; field: string; message: string }>;
+    total_rows: number;
+    auto_approved: boolean;
+  } | null>(null);
+
+  const showManualOption = ['ngo', 'lgu', 'admin'].includes(user?.role || '');
 
   const extractErrorMessage = (raw: string) => {
     try {
-      const parsed = JSON.parse(raw);
+      // Handle "HTTP XXX: {...}" format from apiRequest errors
+      const httpMatch = raw.match(/^HTTP \d+: (.+)$/);
+      const jsonString = httpMatch ? httpMatch[1] : raw;
+
+      const parsed = JSON.parse(jsonString);
+
+      // Check for user-friendly message first
       if (typeof parsed?.message === 'string' && parsed.message.trim()) {
+        const message = parsed.message.toLowerCase();
+
+        // Filter out technical/database errors and provide user-friendly alternatives
+        if (message.includes('column not found') || message.includes('unknown column') ||
+            message.includes('sqlstate') || message.includes('syntax error') ||
+            message.includes('constraint violation') || message.includes('foreign key')) {
+          return 'A system error occurred while processing your report. Please try again later or contact support.';
+        }
+
+        if (message.includes('validation failed') || message.includes('required')) {
+          return 'Please fill in all required fields before submitting.';
+        }
+
+        if (message.includes('unauthorized') || message.includes('authentication')) {
+          return 'Your session has expired. Please log in again.';
+        }
+
+        if (message.includes('network') || message.includes('connection')) {
+          return 'Network connection error. Please check your internet connection and try again.';
+        }
+
+        // Return the parsed message if it's user-friendly
         return parsed.message;
       }
+
+      // Handle validation errors
       if (parsed?.errors && typeof parsed.errors === 'object') {
         const firstField = Object.values(parsed.errors)[0] as unknown;
         if (Array.isArray(firstField) && firstField[0]) {
@@ -77,10 +122,11 @@ const ReportPollutionScreen = () => {
         }
       }
     } catch (_err) {
-      // Ignore JSON parse errors and fall back to raw text.
+      // Ignore JSON parse errors and fall back to generic message
     }
 
-    return raw || 'Failed to submit report';
+    // Fallback for any unhandled errors
+    return 'An unexpected error occurred while submitting your report. Please try again or contact support if the problem persists.';
   };
 
   const pollutionTypes = [
@@ -186,20 +232,7 @@ const ReportPollutionScreen = () => {
   };
 
   // Handle camera capture
-  const handleCameraCapture = async () => {
-    const hasPermissions = await requestPermissions();
-    if (!hasPermissions) return;
 
-    Alert.alert(
-      'Select Image',
-      'Choose an option',
-      [
-        { text: 'Camera', onPress: () => openCamera() },
-        { text: 'Gallery', onPress: () => openGallery() },
-        { text: 'Cancel', style: 'cancel' }
-      ]
-    );
-  };
 
   const openCamera = async () => {
     const result = await ImagePicker.launchCameraAsync({
@@ -213,8 +246,15 @@ const ReportPollutionScreen = () => {
     if (!result.canceled && result.assets[0]) {
       const image = result.assets[0];
       setFormData(prev => ({ ...prev, image: image.uri }));
-      
-      // Try to get location from EXIF or current location
+
+      // Reset AI state for new image
+      setAiScanStatus('idle');
+      setAiResults(null);
+
+      // Run AI analysis immediately
+      await runAIAnalysis(image.uri);
+
+      // Try to get location from EXIF or current location (after AI analysis)
       if (image.exif && image.exif.GPS) {
         const lat = image.exif.GPS.Latitude;
         const lng = image.exif.GPS.Longitude;
@@ -233,9 +273,6 @@ const ReportPollutionScreen = () => {
       } else {
         await handleGetCurrentLocation();
       }
-      
-      // Run AI analysis
-      await runAIAnalysis(image.uri);
     }
   };
 
@@ -251,22 +288,26 @@ const ReportPollutionScreen = () => {
     if (!result.canceled && result.assets[0]) {
       const image = result.assets[0];
       setFormData(prev => ({ ...prev, image: image.uri }));
-      
+
+      // Reset AI state for new image
+      setAiScanStatus('idle');
+      setAiResults(null);
+
+      // Run AI analysis immediately
+      await runAIAnalysis(image.uri);
+
       // For gallery images, always ask for manual location
       setShowLocationFields(true);
       setVerificationStatus('failed');
-      setErrorMessage('Please enter location manually for gallery images.');
-      
-      // Run AI analysis
-      await runAIAnalysis(image.uri);
     }
   };
 
   // AI Analysis
   const runAIAnalysis = async (imageUri: string) => {
     try {
-      setAiScanStatus('scanning');
-      
+      console.log('🚀 Starting AI analysis for image:', imageUri);
+      setAiScanStatus('scanning'); // Show loading immediately
+
       // Create FormData for AI prediction
       const aiFormData = new FormData();
       aiFormData.append('image', {
@@ -276,20 +317,30 @@ const ReportPollutionScreen = () => {
       } as any);
       aiFormData.append('severityByUser', formData.severityByUser || 'medium');
 
+      console.log('📤 Sending AI analysis request with severityByUser:', formData.severityByUser || 'medium');
+
       const response = await apiRequest(API_ENDPOINTS.PREDICT, {
         method: 'POST',
         body: aiFormData,
         // Don't set Content-Type header for FormData - let the browser set it with boundary
       });
 
+      console.log('📥 AI analysis response status:', response.status);
+
       if (response.ok) {
         const aiData = await response.json();
-        console.log('AI Analysis:', aiData);
-        
-        const pred = aiData[0] || aiData;
-        const waterPreds = Array.isArray(pred.water_predictions) ? pred.water_predictions : [];
-        const trashPreds = Array.isArray(pred.trash_predictions) ? pred.trash_predictions : [];
-        const pollutionPreds = Array.isArray(pred.pollution_predictions) ? pred.pollution_predictions : [];
+        console.log('AI Analysis Response:', aiData);
+
+        // Handle the response format: { predictions: {...}, ai_verified: boolean }
+        const pred = aiData.predictions;
+        const aiVerified = aiData.ai_verified;
+
+        console.log('Parsed predictions:', pred);
+        console.log('AI verified:', aiVerified);
+
+        const waterPreds = Array.isArray(pred?.water_predictions) ? pred.water_predictions : [];
+        const trashPreds = Array.isArray(pred?.trash_predictions) ? pred.trash_predictions : [];
+        const pollutionPreds = Array.isArray(pred?.pollution_predictions) ? pred.pollution_predictions : [];
 
         // Infer pollution type
         let inferredType = 'Clean';
@@ -309,8 +360,9 @@ const ReportPollutionScreen = () => {
           `Water predictions: ${waterPreds.length > 0 ? waterPreds.slice(0, 3).map((p: any) => `${p.class_name} (${Math.round(p.confidence * 100)}%)`).join(', ') : 'none'}`,
           `Trash predictions: ${trashPreds.length > 0 ? trashPreds.slice(0, 3).map((p: any) => `${p.class_name} (${Math.round(p.confidence * 100)}%)`).join(', ') : 'none'}`,
           `Pollution predictions: ${pollutionPreds.length > 0 ? pollutionPreds.slice(0, 3).map((p: any) => `${p.class_name} (${Math.round(p.confidence * 100)}%)`).join(', ') : 'none'}`,
-          `Overall confidence: ${pred.overall_confidence}%`,
-          `Estimated pollution percentage: ${pred.pollution_percentage}%`,
+          `Overall confidence: ${pred?.overall_confidence ? Math.round(pred.overall_confidence) : 'N/A'}%`,
+          `Estimated pollution percentage: ${pred?.pollution_percentage ? Math.round(pred.pollution_percentage) : 'N/A'}%`,
+          `AI verification: ${aiVerified ? 'Verified' : 'Not verified'}`,
         ].join('\n\n');
 
         setFormData(prev => ({
@@ -318,7 +370,7 @@ const ReportPollutionScreen = () => {
           title: aiTitle,
           content: aiContent,
           pollutionType: inferredType,
-          severityByUser: pred.severity_level || 'medium'
+          severityByUser: pred?.severity_level || 'medium'
         }));
 
         setAiResults(pred);
@@ -350,12 +402,15 @@ const ReportPollutionScreen = () => {
           );
         }
       } else {
-        throw new Error('AI analysis failed');
+        const errorText = await response.text();
+        console.error('❌ AI analysis failed with status:', response.status, 'Response:', errorText);
+        throw new Error(`AI analysis failed: ${response.status} - ${errorText}`);
       }
     } catch (error) {
-      console.error('AI analysis error:', error);
+      console.error('❌ AI analysis error:', error);
       setAiScanStatus('error');
-      Alert.alert('AI Analysis Error', 'Failed to analyze image. You can still submit the report manually.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      Alert.alert('AI Analysis Error', `Failed to analyze image: ${errorMessage}. You can still submit the report manually.`);
     }
   };
 
@@ -369,8 +424,8 @@ const ReportPollutionScreen = () => {
     }
 
     const waterPreds = Array.isArray(aiResults.water_predictions) ? aiResults.water_predictions : [];
-    const hasWater = waterPreds.length > 0 && aiResults.total_water_area > 0;
-    
+    const hasWater = waterPreds.length > 0;
+
     if (!hasWater) {
       return {
         hasWater: false,
@@ -477,7 +532,7 @@ const ReportPollutionScreen = () => {
     try {
       // Create form data for submission according to backend schema
       const submitFormData = new FormData();
-      
+
       // Required fields according to ReportController validation
       submitFormData.append('title', formData.title);
       submitFormData.append('content', formData.content);
@@ -488,16 +543,16 @@ const ReportPollutionScreen = () => {
       submitFormData.append('severityByUser', formData.severityByUser); // Note: backend expects 'severityByUser', not 'severity_by_user'
       submitFormData.append('user_id', user!.id.toString());
       submitFormData.append('status', 'pending'); // Default status
-      
+
       // AI Analysis fields - map from AI results or use defaults
       if (aiResults) {
         // Map AI analysis to backend expected format
         const severityByAI = aiResults.severity_level || 'low';
         const aiConfidence = aiResults.overall_confidence || 0;
         const pollutionPercentage = aiResults.pollution_percentage || 0;
-        const hasValidPollution = (aiResults.trash_predictions && aiResults.trash_predictions.length > 0) || 
+        const hasValidPollution = (aiResults.trash_predictions && aiResults.trash_predictions.length > 0) ||
                                   (aiResults.pollution_predictions && aiResults.pollution_predictions.length > 0);
-        
+
         submitFormData.append('severityByAI', severityByAI);
         submitFormData.append('ai_confidence', aiConfidence.toString());
         submitFormData.append('severityPercentage', pollutionPercentage.toString());
@@ -538,28 +593,101 @@ const ReportPollutionScreen = () => {
         // Don't set Content-Type header for FormData - let the browser set it with boundary
       });
 
-      if (response.ok) {
-        const responseData = await response.json();
-        console.log('✅ Report submitted successfully:', responseData);
-        setSubmitStatus('success');
-        showSuccess('Report Submitted', responseData?.message || 'Your submission is being processed.');
-        setTimeout(() => {
-          setShowSubmitModal(false);
-          navigation.goBack();
-        }, 2000);
-      } else {
-        const errorText = await response.text();
-        console.error('❌ Submit failed:', errorText);
-        throw new Error(extractErrorMessage(errorText));
-      }
+      const responseData = await response.json();
+      console.log('✅ Report submitted successfully:', responseData);
+      setSubmitStatus('success');
+      showSuccess('Report Submitted', responseData?.message || 'Your submission is being processed.');
+      setTimeout(() => {
+        setShowSubmitModal(false);
+        navigation.goBack();
+      }, 2000);
     } catch (error) {
       console.error('Submit error:', error);
-      setSubmitStatus('error');
       const message = error instanceof Error ? error.message : 'Failed to submit report';
-      setErrorMessage(message);
+      setShowSubmitModal(false);
       showError('Submission Failed', message);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const downloadTemplate = async () => {
+    try {
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (!isAvailable) {
+        Alert.alert('Error', 'Sharing is not available on this device');
+        return;
+      }
+
+      const headers = 'title,content,address,latitude,longitude,pollutionType,severityByUser,water_body_name,temperature_celsius,ph_level,turbidity_ntu,total_dissolved_solids_mgl,sampling_date';
+      const sampleRow1 = 'Pasig River Sample,Observed murky water near bridge,Pasig Blvd Barangay Pineda,14.5995,121.0008,Industrial Waste,medium,Pasig River,29.5,6.8,25.3,180.5,2024-01-15';
+      const sampleRow2 = 'Laguna Lake Monitoring,Clean water observed at sampling point,Laguna Blvd Calamba,14.2035,121.1653,Clean,low,Laguna Lake,28.2,7.1,12.5,95.8,2024-01-16';
+      const csvContent = `${headers}\n${sampleRow1}\n${sampleRow2}`;
+      const fileUri = FileSystem.cacheDirectory + 'waterbase_report_template.csv';
+      await FileSystem.writeAsStringAsync(fileUri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
+      await Sharing.shareAsync(fileUri, { mimeType: 'text/csv' });
+    } catch (error) {
+      console.error('Error downloading CSV template:', error);
+      Alert.alert('Error', 'Failed to download CSV template. Please try again.');
+    }
+  };
+
+  const pickCsvFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'text/csv',
+        copyToCacheDirectory: true,
+      });
+      if (!result.canceled && result.assets && result.assets[0]) {
+        setCsvFile(result.assets[0]);
+        setCsvResult(null);
+      }
+    } catch (err) {
+      console.error('Error picking CSV:', err);
+    }
+  };
+
+  const handleCsvUpload = async () => {
+    if (!csvFile) return;
+    setCsvUploading(true);
+    setCsvResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('csv_file', {
+        uri: csvFile.uri,
+        type: 'text/csv',
+        name: csvFile.name || 'upload.csv',
+      } as any);
+
+      const response = await apiRequest(API_ENDPOINTS.REPORTS_BULK_UPLOAD, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setCsvResult({
+          imported: data.imported || 0,
+          errors: data.errors || [],
+          total_rows: data.total_rows || 0,
+          auto_approved: false,
+        });
+        showError('CSV Upload', data.message || 'Upload failed');
+      } else {
+        setCsvResult({
+          imported: data.imported,
+          errors: [],
+          total_rows: data.total_rows,
+          auto_approved: data.auto_approved || false,
+        });
+        showSuccess('CSV Upload', `Successfully imported ${data.imported} of ${data.total_rows} rows.${data.auto_approved ? ' Reports were auto-verified.' : ''}`);
+      }
+    } catch (error) {
+      showError('CSV Upload', error instanceof Error ? error.message : 'Failed to upload CSV');
+    } finally {
+      setCsvUploading(false);
     }
   };
 
@@ -587,6 +715,118 @@ const ReportPollutionScreen = () => {
             </CardHeader>
 
             <CardContent>
+              {showManualOption && (
+                <View className="flex-row bg-gray-100 rounded-lg mb-4 overflow-hidden">
+                  <TouchableOpacity
+                    className={`flex-1 py-3 px-4 ${reportMode === 'ai' ? 'bg-waterbase-500' : 'bg-transparent'}`}
+                    onPress={() => setReportMode('ai')}
+                  >
+                    <Text className={`text-center text-sm font-medium ${reportMode === 'ai' ? 'text-white' : 'text-gray-700'}`}>
+                      AI Report
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    className={`flex-1 py-3 px-4 ${reportMode === 'manual' ? 'bg-waterbase-500' : 'bg-transparent'}`}
+                    onPress={() => setReportMode('manual')}
+                  >
+                    <Text className={`text-center text-sm font-medium ${reportMode === 'manual' ? 'text-white' : 'text-gray-700'}`}>
+                      Manual Report
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {reportMode === 'manual' ? (
+                <View className="space-y-4">
+                  <View className="flex-row space-x-3">
+                    <TouchableOpacity
+                      className="border-2 border-dashed border-gray-300 rounded-lg p-4 bg-gray-50 flex-row items-center justify-center flex-1"
+                      onPress={downloadTemplate}
+                    >
+                      <Ionicons name="download" size={20} color="#0369A1" />
+                      <Text className="text-waterbase-700 ml-2 font-medium">Download CSV Template</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      className="border-2 border-dashed border-gray-300 rounded-lg p-4 bg-gray-50 items-center justify-center w-16"
+                      onPress={() => setShowCsvHelp(true)}
+                    >
+                      <Ionicons name="information-circle" size={24} color="#0369A1" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <TouchableOpacity
+                    className="border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50 items-center"
+                    onPress={pickCsvFile}
+                  >
+                    <Ionicons name="document-text" size={28} color="#9CA3AF" />
+                    <Text className="text-gray-500 mt-2 text-center font-medium">
+                      {csvFile ? csvFile.name : 'Select CSV File'}
+                    </Text>
+                    <Text className="text-xs text-gray-400 mt-1 text-center">
+                      Tap to pick a .csv file
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    className={`w-full rounded-lg py-4 px-6 flex-row items-center justify-center ${!csvFile || csvUploading ? 'bg-gray-400' : 'bg-waterbase-500'}`}
+                    onPress={handleCsvUpload}
+                    disabled={!csvFile || csvUploading}
+                  >
+                    {csvUploading ? (
+                      <ActivityIndicator size="small" color="white" />
+                    ) : (
+                      <>
+                        <Ionicons name="cloud-upload" size={20} color="white" />
+                        <Text className="text-white font-medium ml-2">Upload CSV</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+
+                  {csvResult && (
+                    <View className="space-y-3">
+                      <View className={`p-3 rounded-lg ${csvResult.errors.length > 0 ? 'bg-yellow-50 border border-yellow-200' : 'bg-green-50 border border-green-200'}`}>
+                        {csvResult.errors.length === 0 ? (
+                          <>
+                            <View className="flex-row items-center">
+                              <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                              <Text className="text-green-700 font-medium ml-2">
+                                Imported {csvResult.imported} of {csvResult.total_rows} rows
+                              </Text>
+                            </View>
+                            {csvResult.auto_approved && (
+                              <Text className="text-green-600 text-sm mt-1">Reports were auto-verified.</Text>
+                            )}
+                          </>
+                        ) : (
+                          <View className="flex-row items-center">
+                            <Ionicons name="warning" size={20} color="#f59e0b" />
+                            <Text className="text-yellow-700 font-medium ml-2">
+                              Imported {csvResult.imported} rows with {csvResult.errors.length} errors
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {csvResult.errors.length > 0 && (
+                        <View className="max-h-48">
+                          <FlatList
+                            data={csvResult.errors}
+                            keyExtractor={(_, i) => i.toString()}
+                            renderItem={({ item }) => (
+                              <View className="flex-row p-2 border-b border-gray-100">
+                                <Text className="text-xs w-12 font-medium">Row {item.row}</Text>
+                                <Text className="text-xs w-24 text-gray-600">{item.field}</Text>
+                                <Text className="text-xs flex-1 text-red-600">{item.message}</Text>
+                              </View>
+                            )}
+                          />
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </View>
+              ) : (
               <View className="space-y-6">
                 {/* Title Field */}
                 <View>
@@ -618,7 +858,11 @@ const ReportPollutionScreen = () => {
                       />
                       <TouchableOpacity
                         className="absolute top-2 right-2 bg-red-500 rounded-full p-2"
-                        onPress={() => setFormData(prev => ({ ...prev, image: null }))}
+                        onPress={() => {
+                          setFormData(prev => ({ ...prev, image: null }));
+                          setAiScanStatus('idle');
+                          setAiResults(null);
+                        }}
                       >
                         <Ionicons name="close" size={16} color="white" />
                       </TouchableOpacity>
@@ -648,18 +892,59 @@ const ReportPollutionScreen = () => {
                       )}
                     </View>
                   ) : (
-                    <TouchableOpacity 
-                      className="border-2 border-dashed border-gray-300 rounded-lg p-8 items-center bg-gray-50"
-                      onPress={handleCameraCapture}
-                    >
-                      <Ionicons name="camera" size={32} color="#9CA3AF" />
-                      <Text className="text-gray-500 mt-2 text-center">
-                        Tap to capture photo
-                      </Text>
-                      <Text className="text-xs text-gray-400 mt-1 text-center">
-                        Location will be automatically detected
-                      </Text>
-                    </TouchableOpacity>
+                    <View className="space-y-3">
+                      <TouchableOpacity
+                        className="border-2 border-dashed border-gray-300 rounded-lg p-6 items-center bg-gray-50"
+                        onPress={async () => {
+                          console.log('Camera button pressed');
+                          try {
+                            const hasPermissions = await requestPermissions();
+                            console.log('Permissions result:', hasPermissions);
+                            if (hasPermissions) {
+                              console.log('Opening camera...');
+                              await openCamera();
+                            }
+                          } catch (error) {
+                            console.error('Error opening camera:', error);
+                            Alert.alert('Error', 'Failed to open camera. Please try again.');
+                          }
+                        }}
+                      >
+                        <Ionicons name="camera" size={28} color="#9CA3AF" />
+                        <Text className="text-gray-500 mt-2 text-center font-medium">
+                          Take Photo
+                        </Text>
+                        <Text className="text-xs text-gray-400 mt-1 text-center">
+                          Capture new image
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        className="border-2 border-dashed border-gray-300 rounded-lg p-6 items-center bg-gray-50"
+                        onPress={async () => {
+                          console.log('Gallery button pressed');
+                          try {
+                            const hasPermissions = await requestPermissions();
+                            console.log('Permissions result:', hasPermissions);
+                            if (hasPermissions) {
+                              console.log('Opening gallery...');
+                              await openGallery();
+                            }
+                          } catch (error) {
+                            console.error('Error opening gallery:', error);
+                            Alert.alert('Error', 'Failed to open gallery. Please try again.');
+                          }
+                        }}
+                      >
+                        <Ionicons name="images" size={28} color="#9CA3AF" />
+                        <Text className="text-gray-500 mt-2 text-center font-medium">
+                          Choose from Gallery
+                        </Text>
+                        <Text className="text-xs text-gray-400 mt-1 text-center">
+                          Select existing photo
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   )}
                 </View>
 
@@ -937,6 +1222,7 @@ const ReportPollutionScreen = () => {
                   </View>
                 </View>
               </View>
+              )}
             </CardContent>
           </Card>
         </View>
@@ -961,7 +1247,7 @@ const ReportPollutionScreen = () => {
                 </Text>
               </>
             )}
-            
+
             {submitStatus === 'success' && (
               <>
                 <View className="items-center">
@@ -975,26 +1261,68 @@ const ReportPollutionScreen = () => {
                 </View>
               </>
             )}
-            
-            {submitStatus === 'error' && (
-              <>
-                <View className="items-center">
-                  <Ionicons name="close-circle" size={48} color="#EF4444" />
-                  <Text className="text-center mt-4 text-gray-900 font-medium">
-                    Submission Failed
-                  </Text>
-                  <Text className="text-center mt-2 text-gray-600 text-sm">
-                    {errorMessage}
-                  </Text>
-                  <TouchableOpacity
-                    className="mt-4 bg-blue-500 rounded-lg py-2 px-4"
-                    onPress={() => setShowSubmitModal(false)}
-                  >
-                    <Text className="text-white text-center">Try Again</Text>
-                  </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* CSV Help Modal */}
+      <Modal
+        visible={showCsvHelp}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCsvHelp(false)}
+      >
+        <View className="flex-1 bg-black/50 justify-center items-center px-4 py-6">
+          <View className="bg-white rounded-lg p-6 w-full max-w-lg max-h-[85%] flex-1">
+            <View className="flex-row justify-between items-center mb-4">
+              <Text className="text-lg font-semibold text-gray-900">CSV Upload Guidelines</Text>
+              <TouchableOpacity onPress={() => setShowCsvHelp(false)}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <View className="flex-1">
+              <ScrollView showsVerticalScrollIndicator={false} className="flex-1">
+                <View className="space-y-4">
+                  <View>
+                    <Text className="font-medium text-gray-900 mb-2">Required Columns:</Text>
+                    <Text className="text-sm text-gray-700 mb-1">• title - Report title</Text>
+                    <Text className="text-sm text-gray-700 mb-1">• content - Description of the observation</Text>
+                    <Text className="text-sm text-gray-700 mb-1">• address - Location address</Text>
+                    <Text className="text-sm text-gray-700 mb-1">• latitude - Number between -90 and 90</Text>
+                    <Text className="text-sm text-gray-700 mb-1">• longitude - Number between -180 and 180</Text>
+                    <Text className="text-sm text-gray-700 mb-1">• pollutionType - One of: Industrial Waste, Chemical Pollution, Oil Spill, Plastic Pollution, Sewage Discharge, Unnatural Color, Clean, Other</Text>
+                    <Text className="text-sm text-gray-700">• severityByUser - One of: low, medium, high, critical</Text>
+                  </View>
+
+                  <View>
+                    <Text className="font-medium text-gray-900 mb-2">Optional Columns:</Text>
+                    <Text className="text-sm text-gray-700 mb-1">• water_body_name - Name of the water body</Text>
+                    <Text className="text-sm text-gray-700 mb-1">• temperature_celsius - Water temperature (number)</Text>
+                    <Text className="text-sm text-gray-700 mb-1">• ph_level - pH level (number)</Text>
+                    <Text className="text-sm text-gray-700 mb-1">• turbidity_ntu - Turbidity in NTU (number)</Text>
+                    <Text className="text-sm text-gray-700 mb-1">• total_dissolved_solids_mgl - TDS in mg/L (number)</Text>
+                    <Text className="text-sm text-gray-700">• sampling_date - Date in YYYY-MM-DD, MM/DD/YYYY, or DD/MM/YYYY format</Text>
+                  </View>
+
+                  <View>
+                    <Text className="font-medium text-gray-900 mb-2">Important Notes:</Text>
+                    <Text className="text-sm text-gray-700 mb-1">• All required fields must be filled</Text>
+                    <Text className="text-sm text-gray-700 mb-1">• Pollution types are case-insensitive but will be normalized</Text>
+                    <Text className="text-sm text-gray-700 mb-1">• Latitude/Longitude must be valid coordinates</Text>
+                    <Text className="text-sm text-gray-700 mb-1">• Optional numeric fields must be numbers if provided</Text>
+                    <Text className="text-sm text-gray-700">• Download the template for examples with valid data</Text>
+                  </View>
                 </View>
-              </>
-            )}
+              </ScrollView>
+            </View>
+
+            <TouchableOpacity
+              className="mt-6 bg-waterbase-500 rounded-lg py-3 px-4 items-center"
+              onPress={() => setShowCsvHelp(false)}
+            >
+              <Text className="text-white font-medium">Got it</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

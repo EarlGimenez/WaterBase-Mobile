@@ -15,8 +15,9 @@ import Navigation from "../components/Navigation";
 import ProtectedContent from "../components/ProtectedContent";
 import { useAuth } from "../contexts/AuthContext";
 import { useFeedback } from "../contexts/FeedbackContext";
-import API_CONFIG, { API_ENDPOINTS, apiRequest } from "../config/api";
+import { API_ENDPOINTS, apiRequest } from "../config/api";
 import { SearchableLocationSelect } from "../components/ui/SearchableLocationSelect";
+import { resolveProfilePhotoUri } from "../utils/imageUrl";
 
 interface UserStats {
   reportsSubmitted?: number;
@@ -52,31 +53,17 @@ const ProfileScreen = () => {
   const [isOrganizationsLoading, setIsOrganizationsLoading] = useState(false);
   const [joinedOrganizations, setJoinedOrganizations] = useState<OrganizationSummary[]>([]);
   const [followedOrganizations, setFollowedOrganizations] = useState<OrganizationSummary[]>([]);
+  const [members, setMembers] = useState<OrganizationSummary[]>([]);
+  const [followers, setFollowers] = useState<OrganizationSummary[]>([]);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(user?.profile_photo || null);
+  const [profilePhotoError, setProfilePhotoError] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [selectedAreaOfResponsibility, setSelectedAreaOfResponsibility] = useState(user?.areaOfResponsibility || '');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const backendBaseUrl = API_CONFIG.BASE_URL.replace(/\/api$/, '');
-
-  const resolveProfilePhotoUri = (uri: string | null) => {
-    if (!uri) {
-      return null;
-    }
-
-    if (
-      uri.startsWith('http://') ||
-      uri.startsWith('https://') ||
-      uri.startsWith('file://') ||
-      uri.startsWith('content://') ||
-      uri.startsWith('data:')
-    ) {
-      return uri;
-    }
-
-    const normalizedPath = uri.startsWith('/') ? uri : `/${uri}`;
-    return `${backendBaseUrl}${normalizedPath}`;
-  };
+  const [networkSubTab, setNetworkSubTab] = useState<'members' | 'followers'>('members');
+  const [activities, setActivities] = useState<any[]>([]);
+  const [isActivitiesLoading, setIsActivitiesLoading] = useState(false);
 
   const shouldRequireArea = (role?: string) => {
     return ['ngo', 'lgu', 'researcher'].includes((role || '').toLowerCase());
@@ -91,7 +78,14 @@ const ProfileScreen = () => {
         {
           text: "Sign Out",
           style: "destructive",
-          onPress: () => logout(),
+          onPress: async () => {
+            await logout();
+            Alert.alert(
+              "Signed Out",
+              "You have been successfully signed out. See you soon!",
+              [{ text: "OK" }]
+            );
+          },
         },
       ]
     );
@@ -124,6 +118,7 @@ const ProfileScreen = () => {
 
       // Create FormData
       const formData = new FormData();
+      formData.append('_method', 'PUT');
       const filename = uri.split('/').pop() || 'profile_photo.jpg';
       const match = /\.(\w+)$/.exec(filename);
       const type = match ? `image/${match[1]}` : `image/jpeg`;
@@ -136,7 +131,7 @@ const ProfileScreen = () => {
 
       // Upload using apiRequest
       const response = await apiRequest(API_ENDPOINTS.USER_PROFILE, {
-        method: 'PUT',
+        method: 'POST',
         body: formData,
       });
 
@@ -199,36 +194,48 @@ const ProfileScreen = () => {
     }
   };
 
-  useEffect(() => {
-    setProfilePhotoUri(user?.profile_photo || null);
-    setSelectedAreaOfResponsibility(user?.areaOfResponsibility || '');
-  }, [user]);
+  const fetchUserStats = async () => {
+    try {
+      const response = await apiRequest(API_ENDPOINTS.USER_STATS, {
+        method: 'GET',
+      });
+      const result = await response.json();
+      setUserStats(result);
+    } catch (error) {
+      console.error('Failed to load user stats', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    // Mock data fetch
-    setTimeout(() => {
-      setUserStats({
-        reportsSubmitted: 15,
-        eventsJoined: 8,
-        badgesEarned: 5,
-        communityPoints: 1250,
-        badges: ["Water Guardian", "Eco Champion", "Community Helper", "Pollution Fighter", "Green Hero"]
-      });
-      setIsLoading(false);
-    }, 1000);
-  }, []);
+    setProfilePhotoUri(user?.profile_photo || null);
+    setProfilePhotoError(false);
+    setSelectedAreaOfResponsibility(user?.areaOfResponsibility || '');
+  }, [user]);
 
   const fetchUserOrganizations = async () => {
     try {
       setIsOrganizationsLoading(true);
-      showLoading('Loading Organizations', 'Fetching your joined and followed organizations...');
-      const response = await apiRequest(API_ENDPOINTS.USER_ORGANIZATIONS, {
+      showLoading('Loading Organizations', 'Fetching your organizations...');
+
+      const isOrg = ['ngo', 'lgu', 'admin'].includes((user?.role || '').toLowerCase());
+      const endpoint = isOrg ? API_ENDPOINTS.USER_ORGANIZATION_AUDIENCE : API_ENDPOINTS.USER_ORGANIZATIONS;
+
+      const response = await apiRequest(endpoint, {
         method: 'GET',
       });
 
       const result = await response.json();
-      setJoinedOrganizations(result.joinedOrganizations || []);
-      setFollowedOrganizations(result.followedOrganizations || []);
+
+      if (isOrg) {
+        setMembers(result.members || []);
+        setFollowers(result.followers || []);
+        setFollowedOrganizations(result.following || []);
+      } else {
+        setJoinedOrganizations(result.joinedOrganizations || []);
+        setFollowedOrganizations(result.followedOrganizations || []);
+      }
     } catch (error) {
       console.error('Failed to load user organizations', error);
       showError('Failed to load organizations', error instanceof Error ? error.message : 'Please try again.');
@@ -238,9 +245,103 @@ const ProfileScreen = () => {
     }
   };
 
+  const fetchUserActivities = async () => {
+    if (!user || !token) return;
+    try {
+      setIsActivitiesLoading(true);
+      const role = (user.role || '').toLowerCase();
+      let activitiesData: any[] = [];
+
+      const fetchReports = async () => {
+        try {
+          const res = await apiRequest(API_ENDPOINTS.REPORTS, { method: 'GET' });
+          const data = await res.json();
+          return Array.isArray(data) ? data : data.data || [];
+        } catch { return []; }
+      };
+
+      const fetchEvents = async () => {
+        try {
+          const res = await apiRequest(API_ENDPOINTS.USER_EVENTS, { method: 'GET' });
+          const data = await res.json();
+          return Array.isArray(data) ? data : data.data || [];
+        } catch { return []; }
+      };
+
+      const fetchAllEvents = async () => {
+        try {
+          const res = await apiRequest(API_ENDPOINTS.EVENTS, { method: 'GET' });
+          const data = await res.json();
+          return Array.isArray(data) ? data : data.data || [];
+        } catch { return []; }
+      };
+
+      if (role === 'ngo' || role === 'lgu' || role === 'admin') {
+        const [reports, allEvents] = await Promise.all([fetchReports(), fetchAllEvents()]);
+        const userEvents = allEvents.filter((e: any) => e.user_id === user.id);
+        activitiesData = [
+          ...userEvents.slice(0, 5).map((e: any) => ({
+            id: `event-${e.id}`,
+            type: e.status === 'completed' ? 'event_completed' : 'event_created',
+            description: e.status === 'completed'
+              ? `Completed cleanup: ${e.title}`
+              : `Created event: ${e.title}`,
+            date: e.created_at,
+            status: e.status,
+          })),
+          ...reports
+            .filter((r: any) => r.user_id === user.id)
+            .slice(0, 3)
+            .map((r: any) => ({
+              id: `report-${r.id}`,
+              type: 'report_submitted',
+              description: `Submitted report: ${r.title || 'Water Quality Report'}`,
+              date: r.created_at,
+              status: r.status || 'pending',
+            })),
+        ];
+      } else {
+        const [reports, events] = await Promise.all([fetchReports(), fetchEvents()]);
+        activitiesData = [
+          ...reports
+            .filter((r: any) => r.user_id === user.id)
+            .slice(0, 5)
+            .map((r: any) => ({
+              id: `report-${r.id}`,
+              type: 'report_submitted',
+              description: `Submitted report: ${r.title || 'Water Quality Report'}`,
+              date: r.created_at,
+              status: r.status || 'pending',
+            })),
+          ...events.slice(0, 5).map((e: any) => ({
+            id: `event-${e.id}`,
+            type: e.status === 'completed' ? 'event_completed' : 'event_joined',
+            description: e.status === 'completed'
+              ? `Completed event: ${e.title}`
+              : `Joined event: ${e.title}`,
+            date: e.pivot?.joined_at || e.created_at,
+            status: e.status,
+          })),
+        ];
+      }
+
+      activitiesData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setActivities(activitiesData.slice(0, 5));
+    } catch (error) {
+      console.error('Error fetching activities:', error);
+      setActivities([]);
+    } finally {
+      setIsActivitiesLoading(false);
+    }
+  };
+
+
+
   useEffect(() => {
     if (user) {
       fetchUserOrganizations();
+      fetchUserStats();
+      fetchUserActivities();
     }
   }, [user]);
 
@@ -338,7 +439,7 @@ const ProfileScreen = () => {
     ];
 
     return statsConfig.map((stat, index) => (
-      <Card key={index} className="border-waterbase-200 flex-1 mx-1">
+      <Card key={index} className="border-waterbase-200 w-24 mx-1">
         <CardContent className="p-3 pt-4 items-center">
           <View className="items-center justify-center mb-2">
             <Ionicons name={stat.icon as any} size={24} color={stat.color} />
@@ -382,10 +483,11 @@ const ProfileScreen = () => {
                     end={{ x: 1, y: 1 }}
                     className="w-20 h-20 rounded-full items-center justify-center"
                   >
-                    {profilePhotoUri ? (
+                    {profilePhotoUri && !profilePhotoError ? (
                       <Image
                         source={{ uri: resolveProfilePhotoUri(profilePhotoUri) || undefined }}
                         className="w-20 h-20 rounded-full"
+                        onError={() => setProfilePhotoError(true)}
                       />
                     ) : (
                       <Text className="text-white text-2xl font-bold">
@@ -439,7 +541,7 @@ const ProfileScreen = () => {
                   </View>
                   <View className="bg-enviro-100 px-3 py-1 rounded-full">
                     <Text className="text-xs font-medium text-enviro-700">
-                      Member since {user ? 'Jan 2024' : 'Today'}
+                      Member since {user?.createdAt ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'N/A'}
                     </Text>
                   </View>
                 </View>
@@ -478,31 +580,41 @@ const ProfileScreen = () => {
 
         {/* Stats Cards */}
         <View className="px-4 mb-6">
-          <View className="flex-row space-x-2">
-            {isLoading ? (
-              Array.from({ length: 4 }).map((_, i) => (
-                <Card key={i} className="border-waterbase-200 flex-1 mx-1">
-                  <CardContent className="p-3 pt-4 items-center">
-                    <View className="animate-pulse">
-                      <View className="w-6 h-6 bg-gray-300 rounded mb-2" />
-                      <View className="w-8 h-6 bg-gray-300 rounded mb-2" />
-                      <View className="w-16 h-4 bg-gray-300 rounded" />
-                    </View>
-                  </CardContent>
-                </Card>
-              ))
-            ) : (
-              renderStatsCards()
-            )}
-          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View className="flex-row space-x-2">
+              {isLoading ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <Card key={i} className="border-waterbase-200 w-24 mx-1">
+                    <CardContent className="p-3 pt-4 items-center">
+                      <View className="animate-pulse">
+                        <View className="w-6 h-6 bg-gray-300 rounded mb-2" />
+                        <View className="w-8 h-6 bg-gray-300 rounded mb-2" />
+                        <View className="w-16 h-4 bg-gray-300 rounded" />
+                      </View>
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
+                renderStatsCards()
+              )}
+            </View>
+          </ScrollView>
         </View>
 
         {/* Tabbed Content */}
         <View className="px-4 mb-6">
           <View className="flex-row space-x-2 mb-4">
             <TabButton id="activity" title="Activity" isActive={activeTab === 'activity'} />
-            <TabButton id="joined" title="Groups Joined" isActive={activeTab === 'joined'} />
-            <TabButton id="followed" title="Following" isActive={activeTab === 'followed'} textClassName="text-[13px] leading-[14px]" buttonClassName="items-center justify-center" />
+            {['ngo', 'lgu', 'admin'].includes((user?.role || '').toLowerCase()) ? (
+              <TabButton id="following" title="Following" isActive={activeTab === 'following'} textClassName="text-[13px] leading-[14px]" buttonClassName="items-center justify-center" />
+            ) : (
+              <TabButton id="joined" title="Groups Joined" isActive={activeTab === 'joined'} />
+            )}
+            {['ngo', 'lgu', 'admin'].includes((user?.role || '').toLowerCase()) ? (
+              <TabButton id="network" title="Network" isActive={activeTab === 'network'} />
+            ) : (
+              <TabButton id="followed" title="Following" isActive={activeTab === 'followed'} textClassName="text-[13px] leading-[14px]" buttonClassName="items-center justify-center" />
+            )}
             <TabButton id="settings" title="Settings" isActive={activeTab === 'settings'} />
           </View>
 
@@ -511,29 +623,72 @@ const ProfileScreen = () => {
               {activeTab === 'activity' ? (
                 <View>
                   <Text className="text-lg font-semibold text-waterbase-950 mb-3">Recent Activity</Text>
-                  <View className="space-y-3">
-                    <View className="flex-row items-start space-x-3">
-                      <View className="w-2 h-2 bg-waterbase-500 rounded-full mt-2" />
-                      <View className="flex-1">
-                        <Text className="text-sm font-medium text-waterbase-900">Report submitted</Text>
-                        <Text className="text-xs text-waterbase-600">Plastic pollution at Manila Bay - 2 hours ago</Text>
-                      </View>
+                  {isActivitiesLoading ? (
+                    <View className="items-center py-6">
+                      <ActivityIndicator size="small" color="#0369a1" />
+                      <Text className="text-waterbase-600 mt-2">Loading activities...</Text>
                     </View>
-                    <View className="flex-row items-start space-x-3">
-                      <View className="w-2 h-2 bg-enviro-500 rounded-full mt-2" />
-                      <View className="flex-1">
-                        <Text className="text-sm font-medium text-waterbase-900">Event joined</Text>
-                        <Text className="text-xs text-waterbase-600">Beach cleanup at Roxas Boulevard - 1 day ago</Text>
-                      </View>
+                  ) : activities.length === 0 ? (
+                    <View className="bg-waterbase-50 p-4 rounded-lg border border-waterbase-200">
+                      <Text className="text-waterbase-700 text-center">No recent activities found.</Text>
+                      <Text className="text-waterbase-600 text-center text-xs mt-1">Start by submitting a report or joining an event!</Text>
                     </View>
-                    <View className="flex-row items-start space-x-3">
-                      <View className="w-2 h-2 bg-yellow-500 rounded-full mt-2" />
-                      <View className="flex-1">
-                        <Text className="text-sm font-medium text-waterbase-900">Badge earned</Text>
-                        <Text className="text-xs text-waterbase-600">Water Guardian badge - 3 days ago</Text>
-                      </View>
+                  ) : (
+                    <View className="space-y-3">
+                      {activities.map((activity) => {
+                        const iconName =
+                          activity.type === 'report_submitted' || activity.type === 'report_reviewed'
+                            ? 'camera'
+                            : activity.type === 'event_joined' || activity.type === 'event_completed' || activity.type === 'event_created'
+                            ? 'calendar'
+                            : activity.type === 'achievement'
+                            ? 'trophy'
+                            : activity.type === 'volunteers_managed'
+                            ? 'people'
+                            : 'document-text';
+                        const iconColor =
+                          activity.type === 'report_submitted'
+                            ? '#0ea5e9'
+                            : activity.type === 'event_joined' || activity.type === 'event_created'
+                            ? '#22c55e'
+                            : activity.type === 'event_completed'
+                            ? '#f59e0b'
+                            : '#8b5cf6';
+                        return (
+                          <View key={activity.id} className="flex-row items-start space-x-3">
+                            <View className="w-8 h-8 rounded-full bg-waterbase-100 items-center justify-center mt-0.5">
+                              <Ionicons name={iconName as any} size={16} color={iconColor} />
+                            </View>
+                            <View className="flex-1">
+                              <Text className="text-sm font-medium text-waterbase-900">{activity.description}</Text>
+                              <Text className="text-xs text-waterbase-600 mt-0.5">
+                                {activity.date ? new Date(activity.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
+                              </Text>
+                            </View>
+                            {activity.status ? (
+                              <View className={`px-2 py-0.5 rounded-full ${
+                                activity.status === 'verified' || activity.status === 'completed'
+                                  ? 'bg-green-100'
+                                  : activity.status === 'pending'
+                                  ? 'bg-yellow-100'
+                                  : 'bg-gray-100'
+                              }`}>
+                                <Text className={`text-xs capitalize ${
+                                  activity.status === 'verified' || activity.status === 'completed'
+                                    ? 'text-green-700'
+                                    : activity.status === 'pending'
+                                    ? 'text-yellow-700'
+                                    : 'text-gray-600'
+                                }`}>
+                                  {activity.status}
+                                </Text>
+                              </View>
+                            ) : null}
+                          </View>
+                        );
+                      })}
                     </View>
-                  </View>
+                  )}
                 </View>
               ) : activeTab === 'joined' ? (
                 renderOrganizationsTab(
@@ -542,6 +697,13 @@ const ProfileScreen = () => {
                   'You have not joined any organizations yet. Find organizations in Community and send a join request.',
                   'Member'
                 )
+              ) : activeTab === 'following' ? (
+                renderOrganizationsTab(
+                  'Following',
+                  followedOrganizations,
+                  'You are not following any organizations yet. Follow organizations in Community to track their updates.',
+                  'Following'
+                )
               ) : activeTab === 'followed' ? (
                 renderOrganizationsTab(
                   'Organizations Followed',
@@ -549,6 +711,31 @@ const ProfileScreen = () => {
                   'You are not following any organizations yet. Follow organizations in Community to track their updates.',
                   'Following'
                 )
+              ) : activeTab === 'network' ? (
+                <View>
+                  <Text className="text-lg font-semibold text-waterbase-950 mb-3">Network</Text>
+                  <View className="flex-row space-x-2 mb-3">
+                    <TouchableOpacity
+                      onPress={() => setNetworkSubTab('members')}
+                      className={`flex-1 py-2 px-3 rounded-lg items-center ${networkSubTab === 'members' ? 'bg-waterbase-500' : 'bg-gray-100'}`}
+                    >
+                      <Text className={`text-center font-medium ${networkSubTab === 'members' ? 'text-white' : 'text-gray-600'}`}>
+                        Members ({members.length})
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setNetworkSubTab('followers')}
+                      className={`flex-1 py-2 px-3 rounded-lg items-center ${networkSubTab === 'followers' ? 'bg-waterbase-500' : 'bg-gray-100'}`}
+                    >
+                      <Text className={`text-center font-medium ${networkSubTab === 'followers' ? 'text-white' : 'text-gray-600'}`}>
+                        Followers ({followers.length})
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  {networkSubTab === 'members'
+                    ? renderOrganizationsTab('Members', members, 'No members have joined your organization yet.', 'Member')
+                    : renderOrganizationsTab('Followers', followers, 'No followers yet.', 'Follower')}
+                </View>
               ) : (
                 <View>
                   <Text className="text-lg font-semibold text-waterbase-950 mb-3">Settings</Text>
@@ -606,14 +793,36 @@ const ProfileScreen = () => {
                         </View>
                       </View>
                     )}
-                    <TouchableOpacity className="flex-row items-center justify-between py-2">
+                    <TouchableOpacity
+                      className="flex-row items-center justify-between py-2"
+                      onPress={() => navigation.navigate('Notifications')}
+                    >
                       <View className="flex-row items-center">
                         <Ionicons name="notifications-outline" size={20} color="#0369a1" />
                         <Text className="ml-3 text-waterbase-900">Notifications</Text>
                       </View>
                       <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
                     </TouchableOpacity>
-                    <TouchableOpacity className="flex-row items-center justify-between py-2">
+                    <TouchableOpacity
+                      className="flex-row items-center justify-between py-2"
+                      onPress={() => {
+                        Alert.alert(
+                          'Privacy & Account Controls',
+                          'Manage your profile visibility and account details through Edit Profile. Notification privacy can be configured in Notification Settings.',
+                          [
+                            {
+                              text: 'Open Edit Profile',
+                              onPress: () => setIsEditProfileOpen(true),
+                            },
+                            {
+                              text: 'Notification Settings',
+                              onPress: () => navigation.navigate('Notifications'),
+                            },
+                            { text: 'Close', style: 'cancel' },
+                          ]
+                        );
+                      }}
+                    >
                       <View className="flex-row items-center">
                         <Ionicons name="shield-outline" size={20} color="#0369a1" />
                         <Text className="ml-3 text-waterbase-900">Privacy</Text>

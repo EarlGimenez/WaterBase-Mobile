@@ -32,6 +32,11 @@ type RecentReport = {
   severityByUser?: string;
   status?: string;
   created_at?: string;
+  reporter?: string;
+  location?: string;
+  type?: string;
+  severity?: string;
+  time?: string;
 };
 
 type TrendPoint = {
@@ -250,38 +255,45 @@ const DashboardScreen = () => {
                   </Text>
                 ) : (
                   recentReports.map((report, index) => {
-                    const severity = formatReportSeverity(report.severityByUser);
+                    const severity = formatReportSeverity(report.severityByUser || report.severity);
 
                     return (
-                  <View
-                    key={index}
-                    className="flex-row items-center justify-between p-3 bg-waterbase-50 rounded-lg"
-                  >
-                    <View className="flex-1">
-                      <Text className="font-medium text-sm text-waterbase-950 mb-1">
-                        {report.address || report.title}
-                      </Text>
-                      <Text className="text-xs text-waterbase-600">
-                        {report.pollutionType || report.status || "Report"}
-                      </Text>
-                    </View>
-                    <View className="items-end">
-                      <View
-                        className="px-2 py-1 rounded-full mb-1"
-                        style={{ backgroundColor: severity.color + "20" }}
-                      >
-                        <Text
-                          className="text-xs font-medium"
-                          style={{ color: severity.color }}
-                        >
-                          {severity.label}
-                        </Text>
+                      <View key={report.id ?? index} className="p-3 bg-waterbase-50 rounded-lg mb-3">
+                        <View className="flex-row items-start justify-between mb-2">
+                          <View className="flex-1 pr-2">
+                            <Text className="font-medium text-sm text-waterbase-950">
+                              {report.location || report.address || report.title}
+                            </Text>
+                            <Text className="text-xs text-waterbase-600 mt-1">
+                              {report.type || report.pollutionType || "Report"}
+                            </Text>
+                            {report.reporter && (
+                              <Text className="text-xs text-waterbase-500 mt-1">
+                                Reporter: {report.reporter}
+                              </Text>
+                            )}
+                          </View>
+                          <View
+                            className="px-2 py-1 rounded-full"
+                            style={{ backgroundColor: severity.color + "20" }}
+                          >
+                            <Text
+                              className="text-xs font-medium"
+                              style={{ color: severity.color }}
+                            >
+                              {severity.label}
+                            </Text>
+                          </View>
+                        </View>
+                        <View className="flex-row justify-between items-center pt-2 border-t border-waterbase-200">
+                          <Text className="text-xs text-waterbase-600">
+                            Status: {report.status || "Pending"}
+                          </Text>
+                          <Text className="text-xs text-waterbase-600">
+                            {report.time || (report.created_at ? new Date(report.created_at).toLocaleString() : "Recent")}
+                          </Text>
+                        </View>
                       </View>
-                      <Text className="text-xs text-waterbase-600">
-                        {report.created_at ? new Date(report.created_at).toLocaleString() : "Recent"}
-                      </Text>
-                    </View>
-                  </View>
                     );
                   })
                 )}

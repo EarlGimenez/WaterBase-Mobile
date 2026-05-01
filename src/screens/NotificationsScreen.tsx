@@ -151,8 +151,8 @@ const NotificationsScreen = () => {
     const date = new Date(timestamp);
     const now = new Date();
     const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
-    
-    if (diffInHours < 1) return 'Just now';
+
+    if (diffInHours < 1) return 'now';
     if (diffInHours < 24) return `${diffInHours}h ago`;
     if (diffInHours < 168) return `${Math.floor(diffInHours / 24)}d ago`;
     return date.toLocaleDateString();
@@ -163,8 +163,11 @@ const NotificationsScreen = () => {
 
     try {
       const target = notifications.find((notification) => notification.id === id);
-      await markNotificationReadState(token, id, !(target?.read_at));
-      await loadNotifications(selectedFilter === 'unread' ? false : undefined);
+      if (!target) return;
+      const newReadState = !!target.read_at;
+      await markNotificationReadState(token, id, newReadState);
+      // Update local state
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read_at: newReadState ? new Date().toISOString() : null } : n));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to update notification');
     }
@@ -175,7 +178,8 @@ const NotificationsScreen = () => {
 
     try {
       await markAllNotificationsRead(token);
-      await loadNotifications(selectedFilter === 'unread' ? false : undefined);
+      // Update local state
+      setNotifications(prev => prev.map(n => ({ ...n, read_at: new Date().toISOString() })));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to mark all as read');
     }
@@ -277,23 +281,22 @@ const NotificationsScreen = () => {
                               {notification.title}
                             </Text>
                             
-                            <View className="flex-row items-center ml-2">
-                              {notification.severity === 'error' && (
-                                <View className="w-2 h-2 bg-red-500 rounded-full mr-2" />
-                              )}
-                              <Text className="text-xs text-waterbase-500">
-                                {formatTime(notification.created_at)}
-                              </Text>
-                            </View>
+                             <View className="flex-row items-center ml-2">
+                               {!isRead(notification) && (
+                                 <View className="w-2 h-2 bg-waterbase-500 rounded-full mr-2" />
+                               )}
+                               {notification.severity === 'error' && (
+                                 <View className="w-2 h-2 bg-red-500 rounded-full mr-2" />
+                               )}
+                               <Text className="text-xs text-waterbase-500">
+                                 {formatTime(notification.created_at)}
+                               </Text>
+                             </View>
                           </View>
                           
-                          <Text className={`text-sm leading-relaxed ${!isRead(notification) ? 'text-waterbase-700' : 'text-waterbase-600'}`}>
-                            {notification.message}
-                          </Text>
-                          
-                          {!isRead(notification) && (
-                            <View className="w-2 h-2 bg-waterbase-500 rounded-full absolute -left-1 top-1" />
-                          )}
+                           <Text className={`text-sm leading-relaxed ${!isRead(notification) ? 'text-waterbase-700' : 'text-waterbase-600'}`}>
+                             {notification.message}
+                           </Text>
                         </View>
                       </View>
                     </CardContent>
