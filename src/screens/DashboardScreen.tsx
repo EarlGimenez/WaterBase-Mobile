@@ -12,6 +12,7 @@ import {
 import Navigation from "../components/Navigation";
 import { API_ENDPOINTS, apiRequest } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
+import { useNavigation } from '@react-navigation/native';
 
 type DashboardStats = {
   totalReports?: number;
@@ -53,6 +54,7 @@ type RegionPoint = {
 };
 
 const DashboardScreen = () => {
+  const navigation = useNavigation<any>();
   const { token } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentReports, setRecentReports] = useState<RecentReport[]>([]);
@@ -232,6 +234,29 @@ const DashboardScreen = () => {
               ))}
             </View>
           </View>
+
+          <Card className="border-waterbase-200 mb-6">
+            <CardHeader>
+              <CardTitle className="text-waterbase-950">Device Pairing</CardTitle>
+              <CardDescription className="text-waterbase-600">
+                Discover unpaired ESP32-S3 nodes and assign station IDs from the phone.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TouchableOpacity
+                className="flex-row items-center justify-between rounded-2xl bg-waterbase-600 px-4 py-4"
+                onPress={() => navigation.navigate('DevicePairing')}
+              >
+                <View className="flex-1 pr-3">
+                  <Text className="text-white font-semibold text-base">Open pairing console</Text>
+                  <Text className="text-waterbase-100 text-xs mt-1">
+                    HTTP-first device discovery and pairing over Laravel.
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            </CardContent>
+          </Card>
 
           {/* Recent Reports */}
           <Card className="border-waterbase-200 mb-6">

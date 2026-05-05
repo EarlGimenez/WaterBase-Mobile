@@ -845,6 +845,42 @@ const ProfileScreen = () => {
             </CardContent>
           </Card>
         </View>
+
+        {/* Activity Log Button */}
+        <View className="px-4 mb-6">
+          <TouchableOpacity
+            onPress={() => {
+              const role = (user?.role || '').toLowerCase();
+              if (role === 'volunteer') {
+                navigation.navigate('VolunteerActivityLog');
+              } else if (['ngo', 'lgu'].includes(role)) {
+                navigation.navigate('OrganizerActivityLog');
+              } else if (role === 'researcher') {
+                navigation.navigate('ResearcherActivityLog');
+              } else if (role === 'admin') {
+                navigation.navigate('VolunteerActivityLog');
+              } else {
+                navigation.navigate('VolunteerActivityLog');
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Card className="border-waterbase-200">
+              <CardContent className="p-4">
+                <View className="flex-row items-center gap-4">
+                  <View className="w-12 h-12 bg-blue-100 rounded-lg items-center justify-center">
+                    <Ionicons name="list" size={24} color="#0369A1" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="font-semibold text-waterbase-950">View Activity Log</Text>
+                    <Text className="text-xs text-waterbase-600">View all your activity and statistics</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
+                </View>
+              </CardContent>
+            </Card>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
     </ProtectedContent>

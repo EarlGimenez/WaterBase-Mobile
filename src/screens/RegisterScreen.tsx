@@ -4,6 +4,7 @@ import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import * as DocumentPicker from "expo-document-picker";
 import { Button } from "../components/ui/Button";
 import {
   Card,
@@ -32,6 +33,7 @@ const RegisterScreen = () => {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [organizationProofFile, setOrganizationProofFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
 
   const roles = [
     { value: "volunteer", label: "Volunteer", description: "Individual community volunteer" },
@@ -42,6 +44,20 @@ const RegisterScreen = () => {
 
   const shouldShowOrganizationFields = (role: string) => {
     return ['ngo', 'lgu', 'researcher'].includes(role);
+  };
+
+  const pickProofDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["application/pdf", "image/png", "image/jpeg", "image/jpg"],
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setOrganizationProofFile(result.assets[0]);
+      }
+    } catch (err) {
+      console.error("Document picker error:", err);
+    }
   };
 
   const handleSubmit = async () => {
@@ -77,6 +93,11 @@ const RegisterScreen = () => {
       return;
     }
 
+    if (shouldShowOrganizationFields(formData.role) && !organizationProofFile) {
+      setError("Proof of legitimacy document is required for organization accounts.");
+      return;
+    }
+
     // Phone number validation
     if (!formData.phoneNumber) {
       setError("Phone number is required.");
@@ -87,25 +108,45 @@ const RegisterScreen = () => {
     setError("");
 
     try {
-      // Prepare registration data for backend API
-      const registrationData = {
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        email: formData.email,
-        password: formData.password,
-        password_confirmation: formData.confirmPassword, // Laravel expects this field name
-        phoneNumber: formData.phoneNumber,
-        role: formData.role,
-        organization: shouldShowOrganizationFields(formData.role) ? formData.organization : null,
-        areaOfResponsibility: shouldShowOrganizationFields(formData.role) ? formData.areaOfResponsibility : null,
-      };
+      let requestBody: FormData | string;
 
-      console.log("Registration data:", registrationData);
+      if (shouldShowOrganizationFields(formData.role) && organizationProofFile) {
+        const formDataBody = new FormData();
+        formDataBody.append("firstName", formData.firstName);
+        formDataBody.append("lastName", formData.lastName);
+        formDataBody.append("email", formData.email);
+        formDataBody.append("password", formData.password);
+        formDataBody.append("password_confirmation", formData.confirmPassword);
+        formDataBody.append("phoneNumber", formData.phoneNumber);
+        formDataBody.append("role", formData.role);
+        formDataBody.append("organization", formData.organization);
+        formDataBody.append("areaOfResponsibility", formData.areaOfResponsibility);
+        formDataBody.append("organization_proof_document", {
+          uri: organizationProofFile.uri,
+          name: organizationProofFile.name,
+          type: organizationProofFile.mimeType || "application/octet-stream",
+        } as any);
+        requestBody = formDataBody;
+      } else {
+        requestBody = JSON.stringify({
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          password: formData.password,
+          password_confirmation: formData.confirmPassword,
+          phoneNumber: formData.phoneNumber,
+          role: formData.role,
+          organization: shouldShowOrganizationFields(formData.role) ? formData.organization : null,
+          areaOfResponsibility: shouldShowOrganizationFields(formData.role) ? formData.areaOfResponsibility : null,
+        });
+      }
+
+      console.log("Registration data:", requestBody);
 
       // Make actual API call to WaterBase backend using mobile-compatible URL
       const response = await apiRequest(API_ENDPOINTS.REGISTER, {
-        method: 'POST',
-        body: JSON.stringify(registrationData),
+        method: "POST",
+        body: requestBody,
       });
 
       if (!response.ok) {
@@ -124,9 +165,12 @@ const RegisterScreen = () => {
       const data = await response.json();
       console.log("Registration successful:", data);
 
+      const isOrg = shouldShowOrganizationFields(formData.role);
       Alert.alert(
         "Registration Successful",
-        "Your account has been created successfully! Please check your email for verification.",
+        isOrg
+          ? "Your account has been created successfully! Your organization account is pending admin review. You will be able to log in once approved."
+          : "Your account has been created successfully! Please check your email for verification.",
         [
           {
             text: "OK",
@@ -346,6 +390,38 @@ const RegisterScreen = () => {
                         disabled={isLoading}
                         className="w-full"
                       />
+                    </View>
+
+                    <View className="mb-4">
+                      <Text className="text-sm font-medium text-waterbase-700 mb-2">
+                        Proof of Legitimacy *
+                      </Text>
+                      <TouchableOpacity
+                        onPress={pickProofDocument}
+                        disabled={isLoading}
+                        className="border border-gray-300 rounded-lg px-3 py-3 bg-white flex-row items-center justify-between"
+                      >
+                        <Text
+                          className={
+                            organizationProofFile
+                              ? "text-waterbase-900 flex-1 mr-2"
+                              : "text-gray-500 flex-1 mr-2"
+                          }
+                          numberOfLines={1}
+                        >
+                          {organizationProofFile
+                            ? organizationProofFile.name
+                            : "Tap to select a document (PDF, PNG, JPG)"}
+                        </Text>
+                        <Ionicons
+                          name={organizationProofFile ? "document-text" : "attach"}
+                          size={20}
+                          color="#6B7280"
+                        />
+                      </TouchableOpacity>
+                      <Text className="text-xs text-waterbase-500 mt-1">
+                        Upload SEC registration, government accreditation, or equivalent proof (max 10MB).
+                      </Text>
                     </View>
 
                     <View className="mb-4">

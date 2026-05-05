@@ -72,6 +72,12 @@ export const OrganizationSelect: React.FC<OrganizationSelectProps> = ({
     return organizations.filter((item) => item.toLowerCase().includes(query));
   }, [organizations, searchValue]);
 
+  const query = searchValue.trim();
+  const hasExactMatch = organizations.some(
+    (item) => item.toLowerCase() === query.toLowerCase()
+  );
+  const showNewOption = query && !hasExactMatch;
+
   const canOpen = !disabled && !isLoading && organizations.length > 0;
 
   return (
@@ -122,7 +128,7 @@ export const OrganizationSelect: React.FC<OrganizationSelectProps> = ({
               <ActivityIndicator size="large" color="#0ea5e9" />
               <Text className="text-gray-500 mt-2">Loading organizations...</Text>
             </View>
-          ) : filteredOrganizations.length === 0 ? (
+          ) : filteredOrganizations.length === 0 && !showNewOption ? (
             <View className="flex-1 items-center justify-center px-8">
               <Ionicons name="business-outline" size={48} color="#D1D5DB" />
               <Text className="text-gray-500 text-center mt-4">No organizations found</Text>
@@ -134,6 +140,23 @@ export const OrganizationSelect: React.FC<OrganizationSelectProps> = ({
             <FlatList
               data={filteredOrganizations}
               keyExtractor={(item) => item}
+              ListHeaderComponent={
+                showNewOption ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      onValueChange(query);
+                      setModalVisible(false);
+                      setSearchValue("");
+                    }}
+                    className="border-b border-gray-100 py-3 px-4 flex-row items-center justify-between bg-waterbase-50"
+                  >
+                    <Text className="text-waterbase-900 text-base flex-1" numberOfLines={2}>
+                      Use "{query}"
+                    </Text>
+                    <Ionicons name="add-circle-outline" size={20} color="#0ea5e9" />
+                  </TouchableOpacity>
+                ) : null
+              }
               renderItem={({ item }) => (
                 <TouchableOpacity
                   onPress={() => {

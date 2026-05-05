@@ -65,13 +65,7 @@ export const Button: React.FC<ButtonProps> = ({
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled}
-      className={`
-        ${getVariantStyles()}
-        ${getSizeStyles()}
-        border rounded-lg flex-row items-center justify-center
-        ${disabled ? "opacity-50" : ""}
-        ${className}
-      `}
+      className={`${getVariantStyles()} ${getSizeStyles()} border rounded-lg flex-row items-center justify-center ${disabled ? "opacity-50" : ""} ${className}`}
     >
       {icon && <View className="mr-2">{icon}</View>}
       <Text className={`font-semibold ${textColor || getTextColor()}`}>{title}</Text>

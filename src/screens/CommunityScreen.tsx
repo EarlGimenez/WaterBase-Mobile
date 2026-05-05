@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Modal, RefreshControl, ScrollView, View, Text, TouchableOpacity } from "react-native";
+import { ActivityIndicator, Alert, Modal, RefreshControl, ScrollView, View, Text, TextInput, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
@@ -86,9 +86,11 @@ const CommunityScreen = () => {
   const [joinRequests, setJoinRequests] = useState<JoinRequestRecord[]>([]);
   const [cleanupDrives, setCleanupDrives] = useState<CleanupDrive[]>([]);
   const [joinedDriveIds, setJoinedDriveIds] = useState<number[]>([]);
+  const [presentDriveIds, setPresentDriveIds] = useState<Set<number>>(new Set());
   const [driveActionId, setDriveActionId] = useState<number | null>(null);
   const [activeSection, setActiveSection] = useState<"drives" | "feed" | "organizations">("drives");
   const [selectedDrive, setSelectedDrive] = useState<CleanupDrive | null>(null);
+  const [orgSearchQuery, setOrgSearchQuery] = useState("");
 
   const isOrganizationAccount = useMemo(() => {
     const role = (user?.role || "").toLowerCase();
@@ -149,6 +151,16 @@ const CommunityScreen = () => {
 
   const joinedDriveIdSet = useMemo(() => new Set(joinedDriveIds), [joinedDriveIds]);
 
+  const filteredOrganizations = useMemo(() => {
+    if (!orgSearchQuery.trim()) return organizations;
+    const query = orgSearchQuery.toLowerCase();
+    return organizations.filter((org) => {
+      const name = (org.organization || `${org.firstName} ${org.lastName}`).toLowerCase();
+      const area = (org.areaOfResponsibility || "").toLowerCase();
+      return name.includes(query) || area.includes(query);
+    });
+  }, [organizations, orgSearchQuery]);
+
   const handleActionError = (title: string, error: unknown) => {
     const message = error instanceof Error ? error.message : "Please try again.";
     Alert.alert(title, message);
@@ -157,29 +169,64 @@ const CommunityScreen = () => {
   const fetchCommunityData = useCallback(async () => {
     showLoading("Loading Community", "Fetching cleanup drives, organizations, and updates...");
     try {
-      const [feedResponse, directoryResponse, userRequestsResponse, userEventsResponse] = await Promise.all([
-        apiRequest(API_ENDPOINTS.COMMUNITY_FEED, { method: "GET" }),
-        apiRequest(API_ENDPOINTS.ORGANIZATIONS_DIRECTORY, { method: "GET" }),
-        apiRequest(API_ENDPOINTS.USER_JOIN_REQUESTS, { method: "GET" }),
-        apiRequest(API_ENDPOINTS.USER_EVENTS, { method: "GET" }),
-      ]);
+      let feedPayload: any = { data: [] };
+      let directoryPayload: any = { data: [] };
+      let userRequestsPayload: any = { data: [] };
+      let userEventsPayload: any = [];
+      let drivesPayload: any = [];
 
-      const drivesResponse = await apiRequest(API_ENDPOINTS.EVENTS, { method: "GET" });
+      try {
+        const res = await apiRequest(API_ENDPOINTS.COMMUNITY_FEED, { method: "GET" });
+        feedPayload = await res.json();
+      } catch (e) {
+        console.error("Failed to fetch community feed", e);
+      }
 
-      const feedPayload = await feedResponse.json();
-      const directoryPayload = await directoryResponse.json();
-      const userRequestsPayload = await userRequestsResponse.json();
-      const userEventsPayload = await userEventsResponse.json();
-      const drivesPayload = await drivesResponse.json();
+      try {
+        const res = await apiRequest(API_ENDPOINTS.ORGANIZATIONS_DIRECTORY, { method: "GET" });
+        directoryPayload = await res.json();
+      } catch (e) {
+        console.error("Failed to fetch organizations directory", e);
+      }
+
+      try {
+        const res = await apiRequest(API_ENDPOINTS.USER_JOIN_REQUESTS, { method: "GET" });
+        userRequestsPayload = await res.json();
+      } catch (e) {
+        console.error("Failed to fetch join requests", e);
+      }
+
+      try {
+        const res = await apiRequest(API_ENDPOINTS.USER_EVENTS, { method: "GET" });
+        userEventsPayload = await res.json();
+      } catch (e) {
+        console.error("Failed to fetch user events", e);
+      }
+
+      try {
+        const res = await apiRequest(API_ENDPOINTS.EVENTS, { method: "GET" });
+        drivesPayload = await res.json();
+      } catch (e) {
+        console.error("Failed to fetch events", e);
+      }
 
       setUpdates(Array.isArray(feedPayload?.data) ? feedPayload.data : []);
       setOrganizations(Array.isArray(directoryPayload?.data) ? directoryPayload.data : []);
       setJoinRequests(Array.isArray(userRequestsPayload?.data) ? userRequestsPayload.data : []);
       setCleanupDrives(Array.isArray(drivesPayload) ? drivesPayload : Array.isArray(drivesPayload?.data) ? drivesPayload.data : []);
+      const userEvents = Array.isArray(userEventsPayload) ? userEventsPayload : [];
       setJoinedDriveIds(
-        (Array.isArray(userEventsPayload) ? userEventsPayload : [])
+        userEvents
           .map((event) => Number(event?.id))
           .filter((eventId) => !Number.isNaN(eventId))
+      );
+      setPresentDriveIds(
+        new Set(
+          userEvents
+            .filter((event) => event.pivot?.is_present === true || event.pivot?.is_present === 1)
+            .map((event) => Number(event?.id))
+            .filter((eventId) => !Number.isNaN(eventId))
+        )
       );
     } catch (error) {
       console.error("Failed to fetch community data", error);
@@ -431,6 +478,13 @@ const CommunityScreen = () => {
                                 </View>
                               </View>
 
+                              {isJoined && presentDriveIds.has(drive.id) && (
+                                <View className="bg-teal-100 rounded-lg px-3 py-2 mb-3 flex-row items-center justify-center">
+                                  <Ionicons name="checkmark-circle" size={16} color="#0d9488" />
+                                  <Text className="text-teal-800 text-xs font-semibold ml-1">Checked in</Text>
+                                </View>
+                              )}
+
                               <View className="flex-row space-x-2">
                                 <TouchableOpacity
                                   className="flex-1 bg-gray-100 rounded-lg py-3 items-center"
@@ -452,6 +506,16 @@ const CommunityScreen = () => {
                                   </TouchableOpacity>
                                 )}
                               </View>
+
+                              {isJoined && !presentDriveIds.has(drive.id) && (drive.status === "recruiting" || drive.status === "active") && (
+                                <TouchableOpacity
+                                  className="mt-2 bg-teal-500 rounded-lg py-3 items-center flex-row justify-center"
+                                  onPress={() => navigation.navigate("QRScanner" as never)}
+                                >
+                                  <Ionicons name="qr-code-outline" size={16} color="#ffffff" />
+                                  <Text className="text-white font-semibold ml-2">Scan QR to check in</Text>
+                                </TouchableOpacity>
+                              )}
                             </View>
                           );
                         })}
@@ -517,8 +581,15 @@ const CommunityScreen = () => {
                   <CardDescription className="text-waterbase-600">Follow organizations or request to become a member.</CardDescription>
                 </CardHeader>
                 <CardContent>
+                  <TextInput
+                    value={orgSearchQuery}
+                    onChangeText={setOrgSearchQuery}
+                    placeholder="Search organizations..."
+                    className="border border-waterbase-200 rounded-lg px-3 py-2 mb-4 bg-white text-waterbase-950"
+                    placeholderTextColor="#6b7280"
+                  />
                   <View className="space-y-3">
-                    {organizations.map((org) => {
+                    {filteredOrganizations.map((org) => {
                       const request = joinRequestByOrgId[org.id];
                       const requestStatus = request?.status;
                       const canCancelRequest = requestStatus === "pending";

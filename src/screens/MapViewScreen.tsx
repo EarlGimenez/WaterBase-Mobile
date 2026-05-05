@@ -22,14 +22,16 @@ import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
 import { useAuth } from "../contexts/AuthContext";
 import { API_ENDPOINTS, apiRequest } from "../config/api";
+import { deviceService, MapSensor } from "../services/deviceService";
 import LeafletMap from "../components/LeafletMap";
+import { getCurrentLocation } from "../utils/location";
 import SeverityDistributionChart from "../components/SeverityDistributionChart";
 import { WBSICalculator, getReportsForLocation, getSeverityDescription, ChartData } from "../utils/wbsiCalculator";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 const BOTTOM_SHEET_MIN_HEIGHT = 64;
 const BOTTOM_SHEET_MAX_HEIGHT = SCREEN_HEIGHT * 0.75;
-const FOOTER_HEIGHT = 10; // Lower to stick properly to footer
+const FOOTER_HEIGHT = 10;
 const SNAP_THRESHOLD = BOTTOM_SHEET_MIN_HEIGHT + (BOTTOM_SHEET_MAX_HEIGHT - BOTTOM_SHEET_MIN_HEIGHT) * 0.45;
 
 // Types
@@ -56,22 +58,6 @@ interface Report {
   };
 }
 
-interface SensorStation {
-  id: string;
-  name: string;
-  latitude: number;
-  longitude: number;
-  waterQualityIndex: number;
-  parameters: {
-    physicochemical: { ph: number; temperature: number; dissolvedOxygen: number };
-    organics: { cod: number; bod: number; nitrates: number };
-    nutrients: { phosphorus: number; nitrogen: number };
-    microbial: { coliform: number; ecoli: number };
-    optical: { turbidity: number; transparency: number };
-  };
-  lastUpdated: string;
-}
-
 interface DistributionData {
   pollutionType: string;
   count: number;
@@ -82,40 +68,6 @@ interface DistributionData {
 type ViewMode = "reports" | "research";
 type ResearchMode = "spatial" | "temporal";
 type TemporalDataType = "sensor" | "cleanup";
-
-// Mock sensor data (in real app, this would come from API)
-const mockSensorStations: SensorStation[] = [
-  {
-    id: "SENSOR001",
-    name: "Manila Bay Station A",
-    latitude: 14.5995,
-    longitude: 120.9842,
-    waterQualityIndex: 72,
-    parameters: {
-      physicochemical: { ph: 7.2, temperature: 28.5, dissolvedOxygen: 6.8 },
-      organics: { cod: 15, bod: 8, nitrates: 2.1 },
-      nutrients: { phosphorus: 0.8, nitrogen: 1.2 },
-      microbial: { coliform: 240, ecoli: 45 },
-      optical: { turbidity: 12, transparency: 85 }
-    },
-    lastUpdated: "2024-01-15T10:30:00Z"
-  },
-  {
-    id: "SENSOR002",
-    name: "Pasig River Station B",
-    latitude: 14.5764,
-    longitude: 121.0851,
-    waterQualityIndex: 45,
-    parameters: {
-      physicochemical: { ph: 6.8, temperature: 30.2, dissolvedOxygen: 4.2 },
-      organics: { cod: 28, bod: 18, nitrates: 4.5 },
-      nutrients: { phosphorus: 1.5, nitrogen: 2.8 },
-      microbial: { coliform: 680, ecoli: 180 },
-      optical: { turbidity: 25, transparency: 45 }
-    },
-    lastUpdated: "2024-01-15T10:25:00Z"
-  }
-];
 
 // Utility functions
 const getSeverityColor = (severity: string) => {
@@ -128,10 +80,10 @@ const getSeverityColor = (severity: string) => {
 };
 
 const getWQIColor = (wqi: number) => {
-  if (wqi >= 80) return "#22c55e"; // Good
-  if (wqi >= 60) return "#eab308"; // Fair
-  if (wqi >= 40) return "#f97316"; // Poor
-  return "#ef4444"; // Very Poor
+  if (wqi >= 80) return "#22c55e";
+  if (wqi >= 60) return "#eab308";
+  if (wqi >= 40) return "#f97316";
+  return "#ef4444";
 };
 
 const getWQIStatus = (wqi: number) => {
@@ -221,8 +173,9 @@ const MapViewScreen = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [filteredReports, setFilteredReports] = useState<Report[]>([]);
 
-  // Research mode state  
-  const [selectedSensor, setSelectedSensor] = useState<SensorStation | null>(null);
+  // Sensor state
+  const [sensors, setSensors] = useState<MapSensor[]>([]);
+  const [selectedSensor, setSelectedSensor] = useState<MapSensor | null>(null);
   const [showLayers, setShowLayers] = useState({
     pollution: true,
     sensors: false,
@@ -241,7 +194,7 @@ const MapViewScreen = () => {
   // UI state
   const [showFilters, setShowFilters] = useState(false);
   const [currentLocation, setCurrentLocation] = useState({
-    latitude: 14.5995, // Manila Bay center
+    latitude: 14.5995,
     longitude: 120.9842,
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
@@ -278,7 +231,6 @@ const MapViewScreen = () => {
     );
   };
 
-  // Pan responder for bottom sheet
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => false,
     onMoveShouldSetPanResponder: (_, gestureState) => {
@@ -295,7 +247,6 @@ const MapViewScreen = () => {
         BOTTOM_SHEET_MAX_HEIGHT,
         Math.max(BOTTOM_SHEET_MIN_HEIGHT, dragStartHeight.current - gestureState.dy)
       );
-
       bottomSheetHeight.setValue(nextHeight);
     },
     onPanResponderRelease: (evt, gestureState) => {
@@ -313,6 +264,19 @@ const MapViewScreen = () => {
   const collapseBottomSheet = () => {
     animateBottomSheet(BOTTOM_SHEET_MIN_HEIGHT, false);
   };
+
+  // Fetch real sensors
+  useEffect(() => {
+    const fetchSensors = async () => {
+      try {
+        const data = await deviceService.getMapSensors();
+        setSensors(data);
+      } catch (e) {
+        console.error('Failed to fetch sensors:', e);
+      }
+    };
+    fetchSensors();
+  }, []);
 
   // Filter reports based on current filters
   useEffect(() => {
@@ -341,20 +305,13 @@ const MapViewScreen = () => {
 
   // Calculate WBSI when selectedReport changes
   useEffect(() => {
-    console.log('selectedReport state changed:', selectedReport);
-
     if (selectedReport) {
-      console.log('Calculating WBSI for selected report');
-      // Get nearby reports for the selected location
       const nearbyReports = getReportsForLocation(reports, selectedReport, 5);
-      console.log('Nearby reports:', nearbyReports.length);
-
       if (nearbyReports.length > 0) {
         const calculator = new WBSICalculator();
         try {
           const wbsiResult = calculator.calculateWBSI([selectedReport]);
           const chartData = calculator.generateChartData(wbsiResult);
-          console.log('WBSI calculation result:', chartData);
           setWbsiData(chartData);
         } catch (error) {
           console.error('Error calculating WBSI:', error);
@@ -403,9 +360,20 @@ const MapViewScreen = () => {
   };
 
   // Location services
-  const getCurrentLocation = async () => {
-    Alert.alert("Location", "Getting current location...");
-    // In real app, use expo-location
+  const handleGetCurrentLocation = async () => {
+    try {
+      const location = await getCurrentLocation();
+      setCurrentLocation({
+        latitude: location.latitude,
+        longitude: location.longitude,
+        latitudeDelta: 0.0922,
+        longitudeDelta: 0.0421,
+      });
+      Alert.alert("Location Updated", "Map centered on your current location.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to get current location.";
+      Alert.alert("Location Error", message);
+    }
   };
 
   if (loading) {
@@ -450,7 +418,13 @@ const MapViewScreen = () => {
           style={{ flex: 1 }}
           center={currentLocation}
           reports={filteredReports}
-          sensors={mockSensorStations}
+          sensors={sensors.map(s => ({
+            id: String(s.id),
+            name: s.name || s.station_id || 'Sensor',
+            latitude: s.latitude,
+            longitude: s.longitude,
+            waterQualityIndex: s.latest_telemetry?.ph ? Math.round(Number(s.latest_telemetry.ph) * 10) : 70,
+          }))}
           showReports={viewMode === "reports" && showLayers.pollution}
           showSensors={viewMode === "research" || showLayers.sensors}
           onReportPress={(report) => {
@@ -458,8 +432,11 @@ const MapViewScreen = () => {
             expandBottomSheet();
           }}
           onSensorPress={(sensor) => {
-            setSelectedSensor(sensor as any);
-            expandBottomSheet();
+            const realSensor = sensors.find(s => String(s.id) === sensor.id);
+            if (realSensor) {
+              setSelectedSensor(realSensor);
+              expandBottomSheet();
+            }
           }}
         />
 
@@ -467,7 +444,7 @@ const MapViewScreen = () => {
         <View className="absolute top-4 right-4 z-10 space-y-2">
           <TouchableOpacity
             className="w-12 h-12 bg-white rounded-full items-center justify-center shadow-lg"
-            onPress={getCurrentLocation}
+            onPress={handleGetCurrentLocation}
           >
             <Ionicons name="locate" size={24} color="#0ea5e9" />
           </TouchableOpacity>
@@ -732,34 +709,25 @@ const MapViewScreen = () => {
                       {selectedSensor ? (
                         <Card className="mb-4">
                           <CardHeader>
-                            <CardTitle className="text-lg">{selectedSensor.name}</CardTitle>
+                            <CardTitle className="text-lg">{selectedSensor.name || selectedSensor.station_id || 'Sensor'}</CardTitle>
                           </CardHeader>
                           <CardContent>
-                            <View className="mb-4">
-                              <Text className="text-sm text-gray-600 mb-2">Water Quality Index</Text>
-                              <View className="flex-row items-center">
-                                <View 
-                                  className="w-6 h-6 rounded-full mr-3"
-                                  style={{ backgroundColor: getWQIColor(selectedSensor.waterQualityIndex) }}
-                                />
-                                <Text className="text-2xl font-bold text-gray-800">{selectedSensor.waterQualityIndex}</Text>
-                                <Text className="text-sm text-gray-600 ml-2">
-                                  ({getWQIStatus(selectedSensor.waterQualityIndex)})
-                                </Text>
-                              </View>
-                            </View>
-
-                            <Text className="text-sm font-medium text-gray-800 mb-2">Parameters</Text>
                             <View className="space-y-2">
-                              <Text className="text-sm text-gray-600">🧪 pH: {selectedSensor.parameters.physicochemical.ph}</Text>
-                              <Text className="text-sm text-gray-600">🌡️ Temperature: {selectedSensor.parameters.physicochemical.temperature}°C</Text>
-                              <Text className="text-sm text-gray-600">💨 Dissolved O₂: {selectedSensor.parameters.physicochemical.dissolvedOxygen} mg/L</Text>
-                              <Text className="text-sm text-gray-600">⚗️ COD: {selectedSensor.parameters.organics.cod} mg/L</Text>
-                              <Text className="text-sm text-gray-600">🦠 E.coli: {selectedSensor.parameters.microbial.ecoli} CFU/100mL</Text>
+                              {selectedSensor.latest_telemetry?.ph !== null && selectedSensor.latest_telemetry?.ph !== undefined && (
+                                <Text className="text-sm text-gray-600">🧪 pH: {Number(selectedSensor.latest_telemetry.ph).toFixed(2)}</Text>
+                              )}
+                              {selectedSensor.latest_telemetry?.temperature_celsius !== null && selectedSensor.latest_telemetry?.temperature_celsius !== undefined && (
+                                <Text className="text-sm text-gray-600">🌡️ Temperature: {Number(selectedSensor.latest_telemetry.temperature_celsius).toFixed(1)}°C</Text>
+                              )}
+                              {selectedSensor.latest_telemetry?.tds_mg_l !== null && selectedSensor.latest_telemetry?.tds_mg_l !== undefined && (
+                                <Text className="text-sm text-gray-600">⚗️ TDS: {Number(selectedSensor.latest_telemetry.tds_mg_l).toFixed(0)} mg/L</Text>
+                              )}
+                              {selectedSensor.latest_telemetry?.turbidity_ntu !== null && selectedSensor.latest_telemetry?.turbidity_ntu !== undefined && (
+                                <Text className="text-sm text-gray-600">🔍 Turbidity: {Number(selectedSensor.latest_telemetry.turbidity_ntu).toFixed(1)} NTU</Text>
+                              )}
                             </View>
-
                             <Text className="text-xs text-gray-500 mt-3">
-                              Last updated: {new Date(selectedSensor.lastUpdated).toLocaleString()}
+                              Last updated: {selectedSensor.last_seen_at ? new Date(selectedSensor.last_seen_at).toLocaleString() : 'Unknown'}
                             </Text>
                           </CardContent>
                         </Card>
@@ -767,8 +735,8 @@ const MapViewScreen = () => {
                         <View>
                           <Text className="text-lg font-bold text-gray-800 mb-3">Sensor Stations</Text>
                           <FlatList
-                            data={mockSensorStations}
-                            keyExtractor={(item) => item.id}
+                            data={sensors}
+                            keyExtractor={(item) => String(item.id)}
                             renderItem={({ item }) => (
                               <TouchableOpacity
                                 onPress={() => setSelectedSensor(item)}
@@ -777,16 +745,16 @@ const MapViewScreen = () => {
                                   <CardContent className="p-3">
                                     <View className="flex-row items-center justify-between">
                                       <View className="flex-1">
-                                        <Text className="font-medium text-gray-800">{item.name}</Text>
+                                        <Text className="font-medium text-gray-800">{item.name || item.station_id || 'Sensor'}</Text>
                                         <Text className="text-sm text-gray-600 mt-1">
-                                          WQI: {item.waterQualityIndex} ({getWQIStatus(item.waterQualityIndex)})
+                                          pH: {item.latest_telemetry?.ph?.toFixed(2) ?? '--'}
                                         </Text>
                                       </View>
                                       <View 
                                         className="w-8 h-8 rounded-full items-center justify-center"
-                                        style={{ backgroundColor: getWQIColor(item.waterQualityIndex) }}
+                                        style={{ backgroundColor: item.latest_telemetry?.ph ? '#0ea5e9' : '#9CA3AF' }}
                                       >
-                                        <Text className="text-white text-xs font-bold">{item.waterQualityIndex}</Text>
+                                        <Ionicons name="hardware-chip-outline" size={14} color="white" />
                                       </View>
                                     </View>
                                   </CardContent>

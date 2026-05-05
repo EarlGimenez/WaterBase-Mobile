@@ -19,7 +19,7 @@ interface SensorStation {
   name: string;
   latitude: number;
   longitude: number;
-  waterQualityIndex: number;
+  waterQualityIndex?: number;
 }
 
 interface LeafletMapProps {
@@ -81,7 +81,7 @@ const LeafletMap: React.FC<LeafletMapProps> = ({
             
             // Add tile layer
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap contributors'
+                attribution: '&copy; OpenStreetMap contributors'
             }).addTo(map);
 
             // Custom icon for pollution reports
@@ -108,12 +108,13 @@ const LeafletMap: React.FC<LeafletMapProps> = ({
 
             // Custom icon for sensor stations
             const createSensorIcon = (wqi, color) => {
+                const hasWqi = typeof wqi === 'number' && wqi > 0;
                 return L.divIcon({
                     className: 'custom-sensor-marker',
                     html: \`<div style="
                         width: 32px;
                         height: 32px;
-                        background-color: \${color};
+                        background-color: \${color || '#0ea5e9'};
                         border: 2px solid white;
                         border-radius: 50%;
                         box-shadow: 0 2px 4px rgba(0,0,0,0.3);
@@ -123,7 +124,7 @@ const LeafletMap: React.FC<LeafletMapProps> = ({
                         color: white;
                         font-size: 10px;
                         font-weight: bold;
-                    ">\${wqi}</div>\`,
+                    ">\${hasWqi ? wqi : '⚡'}</div>\`,
                     iconSize: [32, 32],
                     iconAnchor: [16, 16]
                 });
@@ -158,15 +159,11 @@ const LeafletMap: React.FC<LeafletMapProps> = ({
             // Add sensor station markers
             ${showSensors ? sensors.map(sensor => `
                 L.marker([${sensor.latitude}, ${sensor.longitude}], {
-                    icon: createSensorIcon(${sensor.waterQualityIndex}, '${getWQIColor(sensor.waterQualityIndex)}')
+                    icon: createSensorIcon(${sensor.waterQualityIndex ?? 0}, '${getWQIColor(sensor.waterQualityIndex ?? 70)}')
                 })
                 .bindPopup(\`
                     <div style="min-width: 200px;">
-                        <h4 style="margin: 0 0 8px 0;">\${${JSON.stringify(sensor.name)}}</h4>
-                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                            <div style="width: 16px; height: 16px; background-color: ${getWQIColor(sensor.waterQualityIndex)}; border-radius: 50%;"></div>
-                            <span style="font-weight: bold;">WQI: \${${sensor.waterQualityIndex}}</span>
-                        </div>
+                        <h4 style="margin: 0 0 8px 0;">\${${JSON.stringify(sensor.name || "Sensor")}}</h4>
                         <p style="margin: 0; font-size: 11px; color: #666;">Station ID: \${${JSON.stringify(sensor.id)}}</p>
                     </div>
                 \`)

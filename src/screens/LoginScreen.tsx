@@ -55,11 +55,6 @@ const LoginScreen = () => {
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `Login failed (${response.status})`);
-      }
-
       const data = await response.json();
       console.log("Login successful:", data);
       
@@ -82,6 +77,8 @@ const LoginScreen = () => {
       if (error instanceof Error) {
         if (error.message.includes('Network request failed')) {
           setError("Cannot connect to server. Please check if the Laravel backend is running and accessible from your mobile device.");
+        } else if (error.message.toLowerCase().includes('approval') || error.message.toLowerCase().includes('review')) {
+          setError(error.message);
         } else {
           setError("Login failed. Please check your credentials and try again.");
         }

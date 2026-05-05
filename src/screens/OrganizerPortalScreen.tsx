@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { ActivityIndicator, Alert, Modal, RefreshControl, ScrollView, View, Text, TouchableOpacity, TextInput } from "react-native";
+import { ActivityIndicator, Alert, Modal, RefreshControl, ScrollView, View, Text, TouchableOpacity, TextInput, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
@@ -87,9 +87,28 @@ const OrganizerPortalScreen = () => {
     rewardBadge: "",
   });
   const [eventError, setEventError] = useState("");
+  const [showEditEvent, setShowEditEvent] = useState(false);
+  const [isEditingEvent, setIsEditingEvent] = useState(false);
+  const [editEventId, setEditEventId] = useState<number | null>(null);
+  const [editEvent, setEditEvent] = useState({
+    title: "",
+    date: "",
+    time: "",
+    duration: "",
+    maxVolunteers: "",
+    description: "",
+    rewardPoints: "",
+    rewardBadge: "",
+  });
   const [orgJoinRequests, setOrgJoinRequests] = useState<JoinRequestRecord[]>([]);
   const [autoAcceptJoinRequests, setAutoAcceptJoinRequests] = useState(false);
   const [isOrgLoading, setIsOrgLoading] = useState(false);
+
+  // QR Code display state
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [qrEvent, setQrEvent] = useState<any>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string>("");
+  const [isGeneratingQR, setIsGeneratingQR] = useState(false);
 
   const wbsiCalculator = new WBSICalculator();
 
@@ -433,6 +452,104 @@ const OrganizerPortalScreen = () => {
     }
   };
 
+  const openEditEventModal = (event: any) => {
+    setEditEventId(event.id);
+    setEditEvent({
+      title: event.title || "",
+      date: event.date ? event.date.split("T")[0] : "",
+      time: event.time || "",
+      duration: String(event.duration || ""),
+      maxVolunteers: String(event.maxVolunteers || ""),
+      description: event.description || "",
+      rewardPoints: String(event.points || ""),
+      rewardBadge: event.badge || "",
+    });
+    setEventError("");
+    setShowEditEvent(true);
+  };
+
+  const openQRModal = async (event: any) => {
+    setQrEvent(event);
+    setQrDataUrl("");
+    setShowQRModal(true);
+    setIsGeneratingQR(true);
+
+    try {
+      // Dynamically import and generate QR code
+      const QRCode = await import("qrcode");
+      const dataUrl = await QRCode.toDataURL(
+        `waterbase://event/${event.id}/attend`,
+        {
+          width: 300,
+          margin: 2,
+          color: {
+            dark: "#0369a1",
+            light: "#ffffff",
+          },
+        }
+      );
+      setQrDataUrl(dataUrl);
+    } catch (err) {
+      console.error("Failed to generate QR code:", err);
+      setQrDataUrl(""); // Will show error state
+    } finally {
+      setIsGeneratingQR(false);
+    }
+  };
+
+  const handleUpdateEvent = async () => {
+    if (!editEventId) return;
+
+    if (!editEvent.title.trim()) {
+      setEventError("Event title is required");
+      return;
+    }
+    if (!editEvent.date || !editEvent.time) {
+      setEventError("Date and time are required");
+      return;
+    }
+    if (!editEvent.maxVolunteers || parseInt(editEvent.maxVolunteers) < 1) {
+      setEventError("Maximum volunteers must be at least 1");
+      return;
+    }
+
+    setIsEditingEvent(true);
+    setEventError("");
+
+    try {
+      const eventData = {
+        title: editEvent.title,
+        date: editEvent.date,
+        time: editEvent.time,
+        duration: editEvent.duration,
+        description: editEvent.description,
+        maxVolunteers: parseInt(editEvent.maxVolunteers),
+        points: parseInt(editEvent.rewardPoints) || 50,
+        badge: editEvent.rewardBadge || "Environmental Volunteer",
+      };
+
+      const response = await apiRequest(`${API_ENDPOINTS.EVENTS}/${editEventId}`, {
+        method: 'PUT',
+        body: JSON.stringify(eventData),
+      });
+
+      if (response.ok) {
+        setShowEditEvent(false);
+        setEditEventId(null);
+        await handleRefresh();
+        Alert.alert("Success", "Event updated successfully!");
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update event');
+      }
+    } catch (error) {
+      console.error('Error updating event:', error);
+      setEventError(error instanceof Error ? error.message : 'Failed to update event. Please try again.');
+    } finally {
+      setIsEditingEvent(false);
+    }
+  };
+
   const handleDeclineReport = async (reportId: number) => {
     Alert.alert(
       "Decline Report",
@@ -582,15 +699,22 @@ const OrganizerPortalScreen = () => {
                         <Text className="font-semibold text-waterbase-950 capitalize">{event.status}</Text>
                       </View>
                     </View>
-                    <TouchableOpacity
-                      className="bg-waterbase-500 rounded-lg py-3 items-center"
-                      onPress={() => {
-                        // Edit event functionality can be added later
-                        Alert.alert("Info", "Event editing coming soon!");
-                      }}
-                    >
-                      <Text className="text-white font-semibold">Edit Event</Text>
-                    </TouchableOpacity>
+                    <View className="space-y-2">
+                      {event.status === 'active' && (
+                        <Button
+                          title="Show QR Code"
+                          onPress={() => openQRModal(event)}
+                          variant="primary"
+                          className="w-full"
+                        />
+                      )}
+                      <Button
+                        title="Edit Event"
+                        onPress={() => openEditEventModal(event)}
+                        variant="outline"
+                        className="w-full"
+                      />
+                    </View>
                   </CardContent>
                 </Card>
               ))
@@ -906,6 +1030,132 @@ const OrganizerPortalScreen = () => {
           </View>
         </Modal>
 
+        {/* Edit Event Modal */}
+        <Modal visible={showEditEvent} transparent animationType="slide" onRequestClose={() => setShowEditEvent(false)}>
+          <View className="flex-1 bg-black/50 justify-end">
+            <View className="bg-white rounded-t-3xl p-5 max-h-[80%]">
+              <Text className="text-xl font-bold text-waterbase-950 mb-4">Edit Event</Text>
+
+              {eventError ? (
+                <Text className="text-red-600 mb-4">{eventError}</Text>
+              ) : null}
+
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View className="space-y-4">
+                  <View>
+                    <Text className="text-sm font-medium text-waterbase-950 mb-2">Event Title *</Text>
+                    <TextInput
+                      className="border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="e.g., Beach Cleanup at Manila Bay"
+                      value={editEvent.title}
+                      onChangeText={(text) => setEditEvent({ ...editEvent, title: text })}
+                    />
+                  </View>
+
+                  <View className="flex-row space-x-4">
+                    <View className="flex-1">
+                      <Text className="text-sm font-medium text-waterbase-950 mb-2">Date *</Text>
+                      <TextInput
+                        className="border border-gray-300 rounded-lg px-3 py-2"
+                        placeholder="YYYY-MM-DD"
+                        value={editEvent.date}
+                        onChangeText={(text) => setEditEvent({ ...editEvent, date: text })}
+                      />
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-sm font-medium text-waterbase-950 mb-2">Time *</Text>
+                      <TextInput
+                        className="border border-gray-300 rounded-lg px-3 py-2"
+                        placeholder="HH:MM"
+                        value={editEvent.time}
+                        onChangeText={(text) => setEditEvent({ ...editEvent, time: text })}
+                      />
+                    </View>
+                  </View>
+
+                  <View className="flex-row space-x-4">
+                    <View className="flex-1">
+                      <Text className="text-sm font-medium text-waterbase-950 mb-2">Duration (hours)</Text>
+                      <TextInput
+                        className="border border-gray-300 rounded-lg px-3 py-2"
+                        placeholder="2"
+                        value={editEvent.duration}
+                        onChangeText={(text) => setEditEvent({ ...editEvent, duration: text })}
+                        keyboardType="numeric"
+                      />
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-sm font-medium text-waterbase-950 mb-2">Max Volunteers *</Text>
+                      <TextInput
+                        className="border border-gray-300 rounded-lg px-3 py-2"
+                        placeholder="20"
+                        value={editEvent.maxVolunteers}
+                        onChangeText={(text) => setEditEvent({ ...editEvent, maxVolunteers: text })}
+                        keyboardType="numeric"
+                      />
+                    </View>
+                  </View>
+
+                  <View>
+                    <Text className="text-sm font-medium text-waterbase-950 mb-2">Description</Text>
+                    <TextInput
+                      className="border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="Describe the cleanup activities..."
+                      value={editEvent.description}
+                      onChangeText={(text) => setEditEvent({ ...editEvent, description: text })}
+                      multiline
+                      numberOfLines={3}
+                    />
+                  </View>
+
+                  <View className="flex-row space-x-4">
+                    <View className="flex-1">
+                      <Text className="text-sm font-medium text-waterbase-950 mb-2">Points</Text>
+                      <TextInput
+                        className="border border-gray-300 rounded-lg px-3 py-2"
+                        placeholder="50"
+                        value={editEvent.rewardPoints}
+                        onChangeText={(text) => setEditEvent({ ...editEvent, rewardPoints: text })}
+                        keyboardType="numeric"
+                      />
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-sm font-medium text-waterbase-950 mb-2">Badge</Text>
+                      <TextInput
+                        className="border border-gray-300 rounded-lg px-3 py-2"
+                        placeholder="Environmental Volunteer"
+                        value={editEvent.rewardBadge}
+                        onChangeText={(text) => setEditEvent({ ...editEvent, rewardBadge: text })}
+                      />
+                    </View>
+                  </View>
+
+                  <View className="flex-row space-x-4 mt-6">
+                    <Button
+                      title="Cancel"
+                      onPress={() => {
+                        setShowEditEvent(false);
+                        setEditEventId(null);
+                        setEventError("");
+                      }}
+                      variant="outline"
+                      disabled={isEditingEvent}
+                      className="flex-1 mr-2"
+                    />
+                    <Button
+                      title={isEditingEvent ? "Saving..." : "Save Changes"}
+                      onPress={handleUpdateEvent}
+                      variant="primary"
+                      disabled={isEditingEvent}
+                      className="flex-1 ml-2"
+                    />
+                  </View>
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
         {/* Area Details Modal */}
         <Modal visible={showAreaDetails} transparent animationType="slide" onRequestClose={() => setShowAreaDetails(false)}>
           <View className="flex-1 bg-black/50 justify-end">
@@ -967,6 +1217,55 @@ const OrganizerPortalScreen = () => {
                   </View>
                 </ScrollView>
               )}
+            </View>
+          </View>
+        </Modal>
+
+        {/* QR Code Display Modal */}
+        <Modal visible={showQRModal} transparent animationType="fade" onRequestClose={() => setShowQRModal(false)}>
+          <View className="flex-1 bg-black/70 justify-center items-center p-4">
+            <View className="bg-white rounded-2xl p-6 w-full max-w-sm">
+              <Text className="text-xl font-bold text-waterbase-950 mb-2 text-center">Event QR Code</Text>
+              <Text className="text-sm text-gray-600 mb-4 text-center">
+                Volunteers can scan this code to check in for "{qrEvent?.title}"
+              </Text>
+
+              {isGeneratingQR ? (
+                <View className="w-64 h-64 bg-gray-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                  <ActivityIndicator size="large" color="#0369a1" />
+                  <Text className="text-gray-500 mt-2">Generating QR code...</Text>
+                </View>
+              ) : qrDataUrl ? (
+                <View className="bg-white p-4 rounded-xl border-2 border-waterbase-200 mb-4 items-center justify-center mx-auto">
+                  <Image
+                    source={{ uri: qrDataUrl }}
+                    style={{ width: 280, height: 280 }}
+                    resizeMode="contain"
+                  />
+                </View>
+              ) : (
+                <View className="w-64 h-64 bg-red-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                  <Text className="text-red-600 text-center">Failed to generate QR code</Text>
+                </View>
+              )}
+
+              <View className="bg-waterbase-50 px-4 py-3 rounded-lg mb-4 flex-row items-center">
+                <Ionicons name="people" size={16} color="#0369a1" />
+                <Text className="text-sm text-waterbase-700 ml-2">
+                  {qrEvent?.currentVolunteers || 0} volunteer{(qrEvent?.currentVolunteers || 0) !== 1 ? 's' : ''} checked in
+                </Text>
+              </View>
+
+              <Text className="text-xs text-gray-600 text-center mb-4">
+                Ask volunteers to open the WaterBase app and scan this QR code to mark their attendance.
+              </Text>
+
+              <Button
+                title="Close"
+                onPress={() => setShowQRModal(false)}
+                variant="primary"
+                className="w-full"
+              />
             </View>
           </View>
         </Modal>

@@ -277,22 +277,22 @@ const NotificationsScreen = () => {
                         
                         <View className="flex-1">
                           <View className="flex-row justify-between items-start mb-2">
-                            <Text className={`text-base font-semibold ${!isRead(notification) ? 'text-waterbase-950' : 'text-waterbase-800'}`}>
+                            <Text className={`text-base font-semibold flex-1 ${!isRead(notification) ? 'text-waterbase-950' : 'text-waterbase-800'}`} numberOfLines={2}>
                               {notification.title}
                             </Text>
-                            
-                             <View className="flex-row items-center ml-2">
+
+                             <View className="flex-row items-center ml-2 flex-shrink-0">
                                {!isRead(notification) && (
                                  <View className="w-2 h-2 bg-waterbase-500 rounded-full mr-2" />
                                )}
                                {notification.severity === 'error' && (
                                  <View className="w-2 h-2 bg-red-500 rounded-full mr-2" />
                                )}
-                               <Text className="text-xs text-waterbase-500">
-                                 {formatTime(notification.created_at)}
-                               </Text>
+                                <Text className="text-xs text-waterbase-500">
+                                  {formatTime(notification.created_at)}
+                                </Text>
                              </View>
-                          </View>
+                           </View>
                           
                            <Text className={`text-sm leading-relaxed ${!isRead(notification) ? 'text-waterbase-700' : 'text-waterbase-600'}`}>
                              {notification.message}

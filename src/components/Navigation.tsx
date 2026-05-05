@@ -137,6 +137,15 @@ export const Navigation: React.FC<NavigationProps> = ({
             )}
           </TouchableOpacity>
 
+          {/* QR Scanner Button */}
+          <TouchableOpacity
+            onPress={() => navigation.navigate("QRScanner" as never)}
+            className="p-3 relative"
+            style={{ minWidth: 44, minHeight: 44 }}
+          >
+            <Ionicons name="qr-code-outline" size={22} color="#0369a1" />
+          </TouchableOpacity>
+
           {/* Profile Button */}
           <TouchableOpacity
             onPress={() => navigation.navigate("Profile" as never)}

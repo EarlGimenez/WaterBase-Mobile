@@ -19,6 +19,13 @@ import NotificationsScreen from "./src/screens/NotificationsScreen";
 import HowItWorksScreen from "./src/screens/HowItWorksScreen";
 import OrganizationProfileScreen from "./src/screens/OrganizationProfileScreen";
 import AdminModerationScreen from "./src/screens/AdminModerationScreen";
+import QRScannerScreen from "./src/screens/QRScannerScreen";
+import { VolunteerActivityLogScreen } from "./src/screens/VolunteerActivityLogScreen";
+import { OrganizerActivityLogScreen } from "./src/screens/OrganizerActivityLogScreen";
+import { ResearcherActivityLogScreen } from "./src/screens/ResearcherActivityLogScreen";
+import DevicePairingScreen from "./src/screens/DevicePairingScreen";
+import DeviceDetailScreen from "./src/screens/DeviceDetailScreen";
+import DeviceMaintenanceScreen from "./src/screens/DeviceMaintenanceScreen";
 
 // Import components
 import Layout from "./src/components/Layout";
@@ -75,7 +82,17 @@ export default function App() {
     <SafeAreaProvider>
       <AuthProvider>
         <FeedbackProvider>
-          <NavigationContainer ref={navigationRef}>
+          <NavigationContainer
+            ref={navigationRef}
+            linking={{
+              prefixes: ["waterbase://"],
+              config: {
+                screens: {
+                  QRScanner: "event/:eventId/attend",
+                },
+              },
+            }}
+          >
             <Stack.Navigator
               initialRouteName="Home"
               screenOptions={{
@@ -94,7 +111,14 @@ export default function App() {
               <Stack.Screen name="OrganizationProfile" component={ScreenWithLayout(OrganizationProfileScreen)} />
               <Stack.Screen name="Notifications" component={ScreenWithLayout(NotificationsScreen)} />
               <Stack.Screen name="HowItWorks" component={ScreenWithLayout(HowItWorksScreen)} />
+              <Stack.Screen name="DevicePairing" component={DevicePairingScreen} />
+              <Stack.Screen name="DeviceDetail" component={ScreenWithLayout(DeviceDetailScreen)} />
+              <Stack.Screen name="DeviceMaintenance" component={ScreenWithLayout(DeviceMaintenanceScreen)} />
               <Stack.Screen name="AdminModeration" component={ScreenWithLayout(AdminModerationScreen)} />
+              <Stack.Screen name="QRScanner" component={QRScannerScreen} />
+                <Stack.Screen name="VolunteerActivityLog" component={ScreenWithLayout(VolunteerActivityLogScreen)} />
+                <Stack.Screen name="OrganizerActivityLog" component={ScreenWithLayout(OrganizerActivityLogScreen)} />
+                <Stack.Screen name="ResearcherActivityLog" component={ScreenWithLayout(ResearcherActivityLogScreen)} />
             </Stack.Navigator>
           </NavigationContainer>
         </FeedbackProvider>

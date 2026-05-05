@@ -1,17 +1,19 @@
-// API Configuration for WaterBase Mobile
-// This handles the difference between web localhost and mobile network access
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const isDev = __DEV__;
-const GIMENEZ_LAPTOP_IP = "192.168.0.25";
-// Your computer's IP address from ipconfig: 192.168.0.224
+const IP_POOL = [
+  "192.168.0.25", 
+  "172.18.15.106",
+  "10.231.38.15",
+  "100.127.78.24"
+];
+const CHOOSE_IP = 2;
+
 const API_CONFIG = {
   BASE_URL: isDev 
-    // ? 'http://192.168.0.224:8000/api'  // Your computer's actual IP address
-    ? `http://${GIMENEZ_LAPTOP_IP}:8000/api`  // Gimenez's laptop IP address
-    : 'https://your-production-api.com/api',
-    
-  TIMEOUT: 10000, // 10 seconds
+    ? `http://${IP_POOL[CHOOSE_IP]}:8000/api` 
+    : 'https://your-production-api.com/api',  
+  TIMEOUT: 10000,
 };
 
 // API endpoints
@@ -56,35 +58,52 @@ export const API_ENDPOINTS = {
   ADMIN_MAINTENANCE_QUEUE_RESTART: `${API_CONFIG.BASE_URL}/admin/maintenance/queue-restart`,
   REPORTS_ACCESSIBLE: `${API_CONFIG.BASE_URL}/reports/accessible`,
   EVENT_CANCEL: (id: number) => `${API_CONFIG.BASE_URL}/events/${id}/cancel`,
+  EVENT_START: (id: number) => `${API_CONFIG.BASE_URL}/events/${id}/start`,
+  EVENT_QR_SCAN: (id: number) => `${API_CONFIG.BASE_URL}/events/${id}/qr-scan`,
+  EVENT_MESSAGE_VOLUNTEERS: (id: number) => `${API_CONFIG.BASE_URL}/events/${id}/message-volunteers`,
+  EVENT_COMPLETE: (id: number) => `${API_CONFIG.BASE_URL}/events/${id}/complete`,
   EVENT_VOLUNTEERS: (id: number) => `${API_CONFIG.BASE_URL}/events/${id}/volunteers`,
   REPORT_STATUS: (id: number) => `${API_CONFIG.BASE_URL}/reports/${id}/status`,
   REPORTS_BULK_STATUS: `${API_CONFIG.BASE_URL}/reports/bulk-status`,
   REPORTS_BULK_UPLOAD: `${API_CONFIG.BASE_URL}/reports/bulk-upload`,
   RESEARCH_DOCUMENTS: `${API_CONFIG.BASE_URL}/research-documents`,
+  DEVICES: `${API_CONFIG.BASE_URL}/devices`,
+  DEVICES_DISCOVERED: `${API_CONFIG.BASE_URL}/devices/discovered`,
+  DEVICE: (id: number) => `${API_CONFIG.BASE_URL}/devices/${id}`,
+  DEVICE_PAIR: (id: number) => `${API_CONFIG.BASE_URL}/devices/${id}/pair`,
+  DEVICE_TELEMETRY_LATEST: (id: number) => `${API_CONFIG.BASE_URL}/devices/${id}/telemetry/latest`,
+  DEVICE_TELEMETRY_HISTORY: (id: number) => `${API_CONFIG.BASE_URL}/devices/${id}/telemetry`,
+  DEVICE_COMMANDS: (id: number) => `${API_CONFIG.BASE_URL}/devices/${id}/commands`,
+  DEVICE_LOCATION: (id: number) => `${API_CONFIG.BASE_URL}/devices/${id}/location`,
+  DEVICE_CALIBRATE: (id: number) => `${API_CONFIG.BASE_URL}/devices/${id}/calibrate`,
+  DEVICE_MAINTENANCE: (id: number) => `${API_CONFIG.BASE_URL}/devices/${id}/maintenance`,
+  DEVICE_METRICS_DAILY: (id: number) => `${API_CONFIG.BASE_URL}/devices/${id}/metrics/daily`,
+  DEVICE_METRICS_MONTHLY: (id: number) => `${API_CONFIG.BASE_URL}/devices/${id}/metrics/monthly`,
+  DEVICE_LIVE_READ: (id: number) => `${API_CONFIG.BASE_URL}/devices/${id}/live-read`,
+  DEVICES_MAP: `${API_CONFIG.BASE_URL}/devices/map`,
+  DEVICES_MAINTENANCE_OVERDUE: `${API_CONFIG.BASE_URL}/devices/maintenance/overdue`,
+  DEVICES_MAINTENANCE_UPCOMING: `${API_CONFIG.BASE_URL}/devices/maintenance/upcoming`,
+  DEVICE_MAINTENANCE_SCHEDULE: (id: number) => `${API_CONFIG.BASE_URL}/devices/${id}/maintenance/schedule`,
+  DEVICE_ACTIVITY_LOGS: (id: number) => `${API_CONFIG.BASE_URL}/devices/${id}/activity-logs`,
 };
 
 // API helper function with proper mobile configuration and authentication
 export const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
   const url = endpoint.startsWith('http') ? endpoint : `${API_CONFIG.BASE_URL}${endpoint}`;
   
-  // Get auth token from AsyncStorage
   const token = await AsyncStorage.getItem('auth_token');
   
-  // Set up default headers
   const defaultHeaders: Record<string, string> = {
     'Accept': 'application/json',
   };
   
-  // Add auth header if token exists
   if (token) {
     defaultHeaders['Authorization'] = `Bearer ${token}`;
   }
   
-  // Only set Content-Type for JSON requests (not for FormData)
   if (options.body && typeof options.body === 'string') {
     defaultHeaders['Content-Type'] = 'application/json';
   }
-  // For FormData, don't set Content-Type - let the browser set it with boundary
   
   const config: RequestInit = {
     ...options,
@@ -109,7 +128,16 @@ export const apiRequest = async (endpoint: string, options: RequestInit = {}) =>
     if (!response.ok) {
       const errorText = await response.text();
       console.error('❌ API Error Response:', errorText);
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
+      let message = `HTTP ${response.status}`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        if (errorJson.message) {
+          message = errorJson.message;
+        }
+      } catch {
+        // Not JSON, keep status-based message
+      }
+      throw new Error(message);
     }
     
     return response;
@@ -120,4 +148,5 @@ export const apiRequest = async (endpoint: string, options: RequestInit = {}) =>
   }
 };
 
+export { API_CONFIG };
 export default API_CONFIG;
