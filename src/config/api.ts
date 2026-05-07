@@ -7,7 +7,7 @@ const IP_POOL = [
   "10.231.38.15",
   "100.127.78.24"
 ];
-const CHOOSE_IP = 2;
+const CHOOSE_IP = 0;
 
 const API_CONFIG = {
   BASE_URL: isDev 

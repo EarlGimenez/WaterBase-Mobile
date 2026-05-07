@@ -17,7 +17,8 @@ const statusStyles: Record<string, { label: string; background: string; color: s
 };
 
 const DevicePairingScreen = () => {
-  const { requireAuth } = useAuth();
+  const { requireAuth, user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -111,6 +112,13 @@ const DevicePairingScreen = () => {
       <SafeAreaView className="flex-1 bg-waterbase-50">
         <Navigation title="Device Pairing" showBackButton={true} />
 
+        {!isAdmin ? (
+          <View className="flex-1 items-center justify-center px-6">
+            <Ionicons name="lock-closed" size={48} color="#94A3B8" />
+            <Text className="text-lg font-semibold text-waterbase-950 mt-4 mb-2">Admin Only</Text>
+            <Text className="text-waterbase-700 text-center">Device pairing is restricted to administrators.</Text>
+          </View>
+        ) : (
         <ScrollView
           className="flex-1"
           refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
@@ -277,6 +285,7 @@ const DevicePairingScreen = () => {
             </Card>
           </View>
         </ScrollView>
+        )}
       </SafeAreaView>
     </Layout>
   );

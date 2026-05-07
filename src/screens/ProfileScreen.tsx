@@ -195,6 +195,10 @@ const ProfileScreen = () => {
   };
 
   const fetchUserStats = async () => {
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
     try {
       const response = await apiRequest(API_ENDPOINTS.USER_STATS, {
         method: 'GET',

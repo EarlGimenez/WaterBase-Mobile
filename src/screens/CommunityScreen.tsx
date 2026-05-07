@@ -167,6 +167,10 @@ const CommunityScreen = () => {
   };
 
   const fetchCommunityData = useCallback(async () => {
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
     showLoading("Loading Community", "Fetching cleanup drives, organizations, and updates...");
     try {
       let feedPayload: any = { data: [] };

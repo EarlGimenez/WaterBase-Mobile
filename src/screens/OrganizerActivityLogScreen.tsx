@@ -114,7 +114,9 @@ export const OrganizerActivityLogScreen = () => {
             },
           });
           if (reportsRes.ok) {
-            setReports(await reportsRes.json());
+            const reportsData = await reportsRes.json();
+            console.log('Fetched area reports:', reportsData);
+            setReports(reportsData.filter((r: any) => typeof r === 'object' && r !== null).map((r: any) => ({ ...r, user: r.user || null })));
           }
         } catch (e) {
           console.error('Error fetching area reports:', e);

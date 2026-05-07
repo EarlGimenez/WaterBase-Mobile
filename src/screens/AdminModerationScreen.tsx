@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 import { API_ENDPOINTS, apiRequest } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
 import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/Card";
@@ -82,12 +83,13 @@ type AdminStats = {
   monthlyGrowth: number;
 };
 
-type TabKey = "reports" | "users" | "events" | "settings";
+type TabKey = "reports" | "users" | "events" | "devices" | "settings";
 
 const TABS: { key: TabKey; label: string; icon: string }[] = [
   { key: "reports", label: "Reports", icon: "document-text" },
   { key: "users", label: "Users", icon: "people" },
   { key: "events", label: "Events", icon: "calendar" },
+  { key: "devices", label: "Devices", icon: "hardware-chip" },
   { key: "settings", label: "Settings", icon: "settings" },
 ];
 
@@ -138,6 +140,7 @@ const shouldShowOrganizationFields = (role?: string) => {
 
 const AdminModerationScreen: React.FC = () => {
   const { user, token } = useAuth();
+  const navigation = useNavigation<any>();
   const [activeTab, setActiveTab] = useState<TabKey>("reports");
 
   // Common state
@@ -276,7 +279,8 @@ const AdminModerationScreen: React.FC = () => {
 
       const res = await apiRequest(url, { method: "GET" });
       const data = await res.json();
-      setReports(data.data || []);
+      const reportsArray = Array.isArray(data) ? data : data.data || [];
+      setReports(reportsArray.filter((r: any) => typeof r === 'object' && r !== null).map((r: any) => ({ ...r, user: r.user || null, verifiedBy: r.verifiedBy || null })));
       setReportTotalPages(data.last_page || 1);
     } catch (e) {
       showMessage("Failed to load reports", true);
@@ -933,6 +937,34 @@ const AdminModerationScreen: React.FC = () => {
     </View>
   );
 
+  // ---------- Devices Tab ----------
+  const renderDevicesTab = () => (
+    <View className="px-4 pb-6 space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Device Pairing</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Text className="text-sm text-gray-600 mb-4">
+            Discover unpaired ESP32-S3 nodes and assign station IDs from the phone.
+          </Text>
+          <TouchableOpacity
+            className="flex-row items-center justify-between rounded-2xl bg-waterbase-600 px-4 py-4"
+            onPress={() => navigation.navigate("DevicePairing")}
+          >
+            <View className="flex-1 pr-3">
+              <Text className="text-white font-semibold text-base">Open pairing console</Text>
+              <Text className="text-waterbase-100 text-xs mt-1">
+                HTTP-first device discovery and pairing over Laravel.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+        </CardContent>
+      </Card>
+    </View>
+  );
+
   // ---------- Settings Tab ----------
   const renderSettingsTab = () => (
     <View className="px-4 pb-6 space-y-4">
@@ -1092,6 +1124,7 @@ const AdminModerationScreen: React.FC = () => {
         {activeTab === "reports" && renderReportsTab()}
         {activeTab === "users" && renderUsersTab()}
         {activeTab === "events" && renderEventsTab()}
+        {activeTab === "devices" && renderDevicesTab()}
         {activeTab === "settings" && renderSettingsTab()}
       </ScrollView>
 
@@ -1163,7 +1196,7 @@ const AdminModerationScreen: React.FC = () => {
                   </View>
                   <View className="w-1/2 px-1 mb-2">
                     <Text className="text-sm font-medium text-gray-700">Submitted By</Text>
-                    <Text className="text-base text-gray-900">{selectedReport.username || "N/A"}</Text>
+                    <Text className="text-base text-gray-900">{selectedReport.user?.firstName} {selectedReport.user?.lastName}</Text>
                   </View>
                   <View className="w-1/2 px-1 mb-2">
                     <Text className="text-sm font-medium text-gray-700">Submitted At</Text>

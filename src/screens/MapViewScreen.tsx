@@ -109,6 +109,7 @@ const getPollutionTypeColor = (type: string) => {
 // Custom hook for fetching reports
 const useReportsData = () => {
   const { token } = useAuth();
+  console.log('Token in MapViewScreen:', token);
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -127,13 +128,16 @@ const useReportsData = () => {
 
       if (response.ok) {
         const data = await response.json();
+        console.log('Fetched all reports:', data);
         const reportsArray = Array.isArray(data) ? data : data.data || [];
 
         const validReports = reportsArray
+          .filter((r: any) => typeof r === 'object' && r !== null)
           .map((r: any) => ({
             ...r,
             latitude: parseFloat(r.latitude),
             longitude: parseFloat(r.longitude),
+            user: r.user || null,
           }))
           .filter((report: Report) =>
             !isNaN(report.latitude) && !isNaN(report.longitude)
@@ -158,7 +162,14 @@ const useReportsData = () => {
 };
 
 const MapViewScreen = () => {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
+  if (!token) {
+    return (
+      <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center">
+        <Text>Please log in to access the map.</Text>
+      </SafeAreaView>
+    );
+  }
   const { reports, loading, error } = useReportsData();
 
   // View state
@@ -268,6 +279,7 @@ const MapViewScreen = () => {
   // Fetch real sensors
   useEffect(() => {
     const fetchSensors = async () => {
+      if (!token) return;
       try {
         const data = await deviceService.getMapSensors();
         setSensors(data);
@@ -276,7 +288,7 @@ const MapViewScreen = () => {
       }
     };
     fetchSensors();
-  }, []);
+  }, [token]);
 
   // Filter reports based on current filters
   useEffect(() => {
@@ -328,6 +340,7 @@ const MapViewScreen = () => {
   // Fetch research documents
   useEffect(() => {
     const fetchDocs = async () => {
+      if (!token) return;
       try {
         const response = await apiRequest(API_ENDPOINTS.RESEARCH_DOCUMENTS, {
           method: 'GET',
@@ -341,7 +354,7 @@ const MapViewScreen = () => {
       }
     };
     fetchDocs();
-  }, [viewMode]);
+  }, [viewMode, token]);
 
   // Calculate distribution data for charts
   const getDistributionData = (): DistributionData[] => {

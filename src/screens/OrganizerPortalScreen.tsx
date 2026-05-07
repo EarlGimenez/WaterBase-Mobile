@@ -64,7 +64,7 @@ interface JoinRequestRecord {
 
 const OrganizerPortalScreen = () => {
   const navigation = useNavigation();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { showLoading, showProcessing, showSuccess, showError, hideFeedback } = useFeedback();
   const [activeTab, setActiveTab] = useState('areas');
   const [isLoading, setIsLoading] = useState(true);
@@ -103,6 +103,16 @@ const OrganizerPortalScreen = () => {
   const [orgJoinRequests, setOrgJoinRequests] = useState<JoinRequestRecord[]>([]);
   const [autoAcceptJoinRequests, setAutoAcceptJoinRequests] = useState(false);
   const [isOrgLoading, setIsOrgLoading] = useState(false);
+  const [orgMembers, setOrgMembers] = useState<Array<{
+    id: number;
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: string;
+    joined_at: string;
+    joined_via: string;
+  }>>([]);
+  const [isMembersLoading, setIsMembersLoading] = useState(false);
 
   // QR Code display state
   const [showQRModal, setShowQRModal] = useState(false);
@@ -112,21 +122,34 @@ const OrganizerPortalScreen = () => {
 
   const wbsiCalculator = new WBSICalculator();
 
+  const isOrganizerRole = ['ngo', 'lgu', 'researcher'].includes((user?.role || '').toLowerCase());
+
   // Combined data loading function to reduce API spam
   const loadAllData = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id || !token) return;
 
     try {
       setIsLoading(true);
       setIsOrgLoading(true);
 
-      // Make all API calls in parallel
-      const [reportsResponse, eventsResponse, orgRequestsResponse, orgSettingsResponse] = await Promise.all([
+      // Make API calls in parallel
+      const requests: Promise<Response>[] = [
         apiRequest(API_ENDPOINTS.REPORTS_ACCESSIBLE, { method: "GET" }),
         apiRequest(`${API_ENDPOINTS.EVENTS}?user_id=${user.id}`, { method: "GET" }),
-        apiRequest(`${API_ENDPOINTS.ORGANIZATIONS}/${user.id}/join-requests`, { method: "GET" }),
-        apiRequest(`${API_ENDPOINTS.ORGANIZATIONS}/${user.id}/join-settings`, { method: "GET" }),
-      ]);
+      ];
+
+      if (isOrganizerRole) {
+        requests.push(
+          apiRequest(`${API_ENDPOINTS.ORGANIZATIONS}/${user.id}/join-requests`, { method: "GET" }),
+          apiRequest(`${API_ENDPOINTS.ORGANIZATIONS}/${user.id}/join-settings`, { method: "GET" })
+        );
+      }
+
+      const responses = await Promise.all(requests);
+      const reportsResponse = responses[0];
+      const eventsResponse = responses[1];
+      const orgRequestsResponse = isOrganizerRole ? responses[2] : null;
+      const orgSettingsResponse = isOrganizerRole ? responses[3] : null;
 
       // Process reports
       const allReports = await reportsResponse.json();
@@ -137,11 +160,16 @@ const OrganizerPortalScreen = () => {
       const events = Array.isArray(eventsData) ? eventsData : [];
       setCreatedEvents(events);
 
-      // Process organization data
-      const orgRequestsData = await orgRequestsResponse.json();
-      const orgSettingsData = await orgSettingsResponse.json();
-      setOrgJoinRequests(Array.isArray(orgRequestsData?.data) ? orgRequestsData.data : []);
-      setAutoAcceptJoinRequests(!!orgSettingsData?.auto_accept_join_requests);
+      // Process organization data only for organizers
+      if (isOrganizerRole && orgRequestsResponse && orgSettingsResponse) {
+        const orgRequestsData = await orgRequestsResponse.json();
+        const orgSettingsData = await orgSettingsResponse.json();
+        setOrgJoinRequests(Array.isArray(orgRequestsData?.data) ? orgRequestsData.data : []);
+        setAutoAcceptJoinRequests(!!orgSettingsData?.auto_accept_join_requests);
+      } else {
+        setOrgJoinRequests([]);
+        setAutoAcceptJoinRequests(false);
+      }
 
       // Process areas with events data
       processEligibleAreas(verifiedReports, events);
@@ -149,6 +177,12 @@ const OrganizerPortalScreen = () => {
       // Process volunteers from events
       await processVolunteersFromEvents(events);
 
+      // Fetch organization members only for organizers
+      if (isOrganizerRole) {
+        await fetchOrgMembers();
+      } else {
+        setOrgMembers([]);
+      }
     } catch (error) {
       console.error('Failed to load organizer data:', error);
       showError('Failed to load organizer data', error instanceof Error ? error.message : 'Please try again.');
@@ -158,7 +192,7 @@ const OrganizerPortalScreen = () => {
       setIsRefreshing(false);
       hideFeedback();
     }
-  }, [user?.id, showError, hideFeedback]);
+  }, [user?.id, user?.role, showError, hideFeedback]);
 
   // Process reports into eligible areas
   const processEligibleAreas = (reports: Report[], eventsData: any[]) => {
@@ -336,9 +370,51 @@ const OrganizerPortalScreen = () => {
     return 'Low';
   };
 
+  const fetchOrgMembers = async () => {
+    if (!user?.id) return;
+    try {
+      setIsMembersLoading(true);
+      const response = await apiRequest(`${API_ENDPOINTS.ORGANIZATIONS}/${user.id}/members`, { method: "GET" });
+      if (response.ok) {
+        const data = await response.json();
+        setOrgMembers(Array.isArray(data?.data) ? data.data : []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch org members:', error);
+    } finally {
+      setIsMembersLoading(false);
+    }
+  };
+
+  const handleRemoveMember = async (memberId: number) => {
+    if (!user) return;
+    Alert.alert(
+      "Remove Member",
+      "Are you sure you want to remove this member?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await apiRequest(`${API_ENDPOINTS.ORGANIZATIONS}/${user.id}/members/${memberId}`, {
+                method: "DELETE",
+              });
+              setOrgMembers((prev) => prev.filter((m) => m.id !== memberId));
+            } catch (error) {
+              console.error("Failed to remove member", error);
+              showError("Unable to remove member", error instanceof Error ? error.message : "Please try again.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // Organization controls handlers
   const handleUpdateJoinRequest = async (requestId: number, status: "accepted" | "rejected") => {
-    if (!user) return;
+    if (!user || !isOrganizerRole) return;
 
     try {
       showProcessing("Updating Request", "Applying your moderation action...");
@@ -355,7 +431,7 @@ const OrganizerPortalScreen = () => {
   };
 
   const handleToggleAutoAccept = async () => {
-    if (!user) return;
+    if (!user || !isOrganizerRole) return;
 
     try {
       showProcessing("Updating Settings", "Saving organization request settings...");
@@ -373,11 +449,11 @@ const OrganizerPortalScreen = () => {
 
   // Load data on mount
   useEffect(() => {
-    if (user?.id) {
+    if (user?.id && token) {
       showLoading('Loading Organizer Portal', 'Fetching reports, events, and volunteers...');
       loadAllData();
     }
-  }, [user?.id, loadAllData, showLoading]);
+  }, [user?.id, token, loadAllData, showLoading]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -581,6 +657,7 @@ const OrganizerPortalScreen = () => {
     { key: 'areas', label: 'Reports', icon: 'map' },
     { key: 'events', label: 'My Events', icon: 'calendar' },
     { key: 'volunteers', label: 'Volunteers', icon: 'people' },
+    { key: 'members', label: 'Members', icon: 'people-circle' },
     { key: 'organization', label: 'Controls', icon: 'business' },
   ];
 
@@ -778,6 +855,50 @@ const OrganizerPortalScreen = () => {
                           {volunteer.totalEvents} events • {volunteer.totalPoints} points
                         </Text>
                         <Text className="text-xs text-gray-600">{volunteer.lastActivity}</Text>
+                      </View>
+                    </View>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </View>
+        );
+
+      case 'members':
+        return (
+          <View className="space-y-4">
+            <Card className="border-waterbase-200">
+              <CardHeader>
+                <CardTitle className="text-base text-waterbase-950">Organization Members</CardTitle>
+                <CardDescription className="text-sm">Members who have joined your organization</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {isMembersLoading ? (
+                  <View className="items-center py-6">
+                    <ActivityIndicator size="small" color="#0369a1" />
+                    <Text className="text-waterbase-600 mt-2">Loading members...</Text>
+                  </View>
+                ) : orgMembers.length === 0 ? (
+                  <Text className="text-center text-gray-600 py-4">
+                    No members found. Members will appear here once they join your organization.
+                  </Text>
+                ) : (
+                  orgMembers.map((member) => (
+                    <View key={member.id} className="p-3 bg-gray-50 rounded-lg mb-3">
+                      <Text className="font-medium text-waterbase-950">
+                        {member.firstName} {member.lastName}
+                      </Text>
+                      <Text className="text-sm text-gray-600">{member.email}</Text>
+                      <View className="flex-row justify-between items-center mt-2">
+                        <Text className="text-xs text-gray-600">
+                          Joined: {member.joined_at ? new Date(member.joined_at).toLocaleDateString() : '-'}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => handleRemoveMember(member.id)}
+                          className="px-3 py-1 rounded-lg bg-red-100"
+                        >
+                          <Text className="text-xs text-red-700 font-medium">Remove</Text>
+                        </TouchableOpacity>
                       </View>
                     </View>
                   ))

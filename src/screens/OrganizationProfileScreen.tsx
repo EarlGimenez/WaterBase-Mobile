@@ -151,6 +151,38 @@ const OrganizationProfileScreen: React.FC<OrganizationProfileScreenProps> = ({ r
     }
   };
 
+  const handleLeaveOrganization = async () => {
+    if (!organizationId || !profile || !profile.is_member || isSubmitting) {
+      return;
+    }
+
+    Alert.alert(
+      "Leave Organization",
+      "Are you sure you want to leave this organization?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Leave",
+          style: "destructive",
+          onPress: async () => {
+            setIsSubmitting(true);
+            try {
+              await apiRequest(`${API_ENDPOINTS.ORGANIZATIONS}/${organizationId}/members/me`, {
+                method: "DELETE",
+              });
+              await fetchProfile();
+            } catch (error) {
+              console.error("Failed to leave organization", error);
+              showError("Unable to leave organization", error instanceof Error ? error.message : "Please try again.");
+            } finally {
+              setIsSubmitting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   if (!organizationId) {
     return (
       <ProtectedContent>
@@ -215,15 +247,25 @@ const OrganizationProfileScreen: React.FC<OrganizationProfileScreenProps> = ({ r
                       </Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity
-                      onPress={handleJoinRequest}
-                      disabled={isSubmitting || profile?.is_member}
-                      className={`flex-1 items-center py-2 rounded-lg ${profile?.is_member ? "bg-enviro-100" : profile?.join_request?.status === "pending" ? "bg-red-100" : "bg-enviro-500"}`}
-                    >
-                      <Text className={`${profile?.is_member ? "text-enviro-800" : profile?.join_request?.status === "pending" ? "text-red-800" : "text-white"} font-medium`}>
-                        {profile?.is_member ? "Member" : profile?.join_request?.status === "pending" ? "Cancel Request" : "Request to Join"}
-                      </Text>
-                    </TouchableOpacity>
+                    {profile?.is_member ? (
+                      <TouchableOpacity
+                        onPress={handleLeaveOrganization}
+                        disabled={isSubmitting}
+                        className="flex-1 items-center py-2 rounded-lg bg-red-100"
+                      >
+                        <Text className="text-red-800 font-medium">Leave Organization</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={handleJoinRequest}
+                        disabled={isSubmitting}
+                        className={`flex-1 items-center py-2 rounded-lg ${profile?.join_request?.status === "pending" ? "bg-red-100" : "bg-enviro-500"}`}
+                      >
+                        <Text className={`${profile?.join_request?.status === "pending" ? "text-red-800" : "text-white"} font-medium`}>
+                          {profile?.join_request?.status === "pending" ? "Cancel Request" : "Request to Join"}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </CardContent>
               </Card>
