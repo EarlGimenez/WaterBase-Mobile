@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import { API_ENDPOINTS, apiRequest } from "../config/api";
+import { API_ENDPOINTS, apiRequest, getImageUrl } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
 import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -170,6 +170,8 @@ const AdminModerationScreen: React.FC = () => {
   const [showActionModal, setShowActionModal] = useState(false);
   const [pendingAction, setPendingAction] = useState<"approve" | "reject">("approve");
   const [adminNotes, setAdminNotes] = useState("");
+  const [imageErrors, setImageErrors] = useState<{ [key: string]: boolean }>({});
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   // Report filters
   const [filterPollutionType, setFilterPollutionType] = useState("");
@@ -392,6 +394,8 @@ const AdminModerationScreen: React.FC = () => {
     setSelectedReport(report);
     setPendingAction(action);
     setAdminNotes("");
+    setImageErrors({});
+    setSelectedImage(null);
     setShowActionModal(true);
   };
 
@@ -639,7 +643,7 @@ const AdminModerationScreen: React.FC = () => {
         reports.map((report) => (
           <TouchableOpacity
             key={report.id}
-            onPress={() => { setSelectedReport(report); setShowReportModal(true); }}
+            onPress={() => { setSelectedReport(report); setImageErrors({}); setSelectedImage(null); setShowReportModal(true); }}
             className="bg-white rounded-lg border border-gray-200 p-3 mb-3"
           >
             <View className="flex-row justify-between items-start">
@@ -1129,7 +1133,7 @@ const AdminModerationScreen: React.FC = () => {
       </ScrollView>
 
       {/* Report Detail Modal */}
-      <Modal visible={showReportModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowReportModal(false)}>
+      <Modal visible={showReportModal} animationType="slide" onRequestClose={() => setShowReportModal(false)}>
         <View className="flex-1 bg-white">
           <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200">
             <Text className="text-lg font-semibold text-gray-900">Report Validation</Text>
@@ -1137,7 +1141,7 @@ const AdminModerationScreen: React.FC = () => {
               <Ionicons name="close" size={24} color="#6b7280" />
             </TouchableOpacity>
           </View>
-          <ScrollView className="flex-1 p-4">
+          <ScrollView className="flex-1 p-4" contentContainerStyle={{ paddingBottom: 40 }}>
             {selectedReport && (
               <View className="space-y-4">
                 <View>
@@ -1160,13 +1164,45 @@ const AdminModerationScreen: React.FC = () => {
                   {selectedReport.image ? (
                     <View className="flex-1">
                       <Text className="text-sm font-medium text-gray-700 mb-1">Submitted Image</Text>
-                      <Image source={{ uri: selectedReport.image }} className="w-full h-40 rounded-lg" resizeMode="cover" />
+                      {imageErrors[selectedReport.image] ? (
+                        <TouchableOpacity
+                          className="w-full h-32 rounded-lg bg-gray-200 items-center justify-center"
+                          onPress={() => setSelectedImage(null)}
+                        >
+                          <Text className="text-gray-500">Image not available</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity onPress={() => setSelectedImage(getImageUrl(selectedReport.image) || null)}>
+                          <Image
+                            source={{ uri: getImageUrl(selectedReport.image) || undefined }}
+                            className="w-full h-32 rounded-lg"
+                            resizeMode="cover"
+                            onError={() => setImageErrors(prev => ({ ...prev, [selectedReport.image!]: true }))}
+                          />
+                        </TouchableOpacity>
+                      )}
                     </View>
                   ) : null}
                   {selectedReport.ai_annotated_image ? (
                     <View className="flex-1">
                       <Text className="text-sm font-medium text-gray-700 mb-1">AI Annotated</Text>
-                      <Image source={{ uri: selectedReport.ai_annotated_image }} className="w-full h-40 rounded-lg" resizeMode="cover" />
+                      {imageErrors[selectedReport.ai_annotated_image] ? (
+                        <TouchableOpacity
+                          className="w-full h-32 rounded-lg bg-gray-200 items-center justify-center"
+                          onPress={() => setSelectedImage(null)}
+                        >
+                          <Text className="text-gray-500">Image not available</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity onPress={() => setSelectedImage(getImageUrl(selectedReport.ai_annotated_image) || null)}>
+                          <Image
+                            source={{ uri: getImageUrl(selectedReport.ai_annotated_image) || undefined }}
+                            className="w-full h-32 rounded-lg"
+                            resizeMode="cover"
+                            onError={() => setImageErrors(prev => ({ ...prev, [selectedReport.ai_annotated_image!]: true }))}
+                          />
+                        </TouchableOpacity>
+                      )}
                     </View>
                   ) : null}
                 </View>
@@ -1174,7 +1210,9 @@ const AdminModerationScreen: React.FC = () => {
                 <View className="flex-row flex-wrap -mx-1">
                   <View className="w-1/2 px-1 mb-2">
                     <Text className="text-sm font-medium text-gray-700">Type</Text>
-                    <Badge variant="outline"><Text className="text-xs">{selectedReport.pollutionType}</Text></Badge>
+                    <View className="px-2 py-1 border border-gray-300 rounded-lg bg-white self-start">
+                      <Text className="text-xs text-gray-700">{selectedReport.pollutionType}</Text>
+                    </View>
                   </View>
                   <View className="w-1/2 px-1 mb-2">
                     <Text className="text-sm font-medium text-gray-700">User Severity</Text>
@@ -1209,23 +1247,23 @@ const AdminModerationScreen: React.FC = () => {
                   <View className="bg-green-100 rounded-lg p-3 items-center">
                     <Text className="text-green-800 font-medium">Auto-Approved</Text>
                   </View>
-                ) : (
-                  <View className="flex-row space-x-2 mt-4">
-                    <View className="flex-1">
-                      <Button
-                        title="Approve"
-                        onPress={() => { setShowReportModal(false); openActionModal(selectedReport, "approve"); }}
-                      />
-                    </View>
-                    <View className="flex-1">
-                      <Button
-                        title="Reject"
-                        variant="secondary"
-                        onPress={() => { setShowReportModal(false); openActionModal(selectedReport, "reject"); }}
-                      />
-                    </View>
-                  </View>
-                )}
+                 ) : (
+                   <View className="flex-row space-x-2 mt-2">
+                     <View className="flex-1">
+                       <Button
+                         title="Approve"
+                         onPress={() => { setShowReportModal(false); openActionModal(selectedReport, "approve"); }}
+                       />
+                     </View>
+                     <View className="flex-1">
+                       <Button
+                         title="Reject"
+                         variant="secondary"
+                         onPress={() => { setShowReportModal(false); openActionModal(selectedReport, "reject"); }}
+                       />
+                     </View>
+                   </View>
+                 )}
               </View>
             )}
           </ScrollView>
@@ -1489,6 +1527,22 @@ const AdminModerationScreen: React.FC = () => {
               </View>
             )}
           </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Image Modal */}
+      <Modal visible={!!selectedImage} transparent animationType="fade" onRequestClose={() => setSelectedImage(null)}>
+        <View className="flex-1 bg-black/80 justify-center items-center p-4">
+          <TouchableOpacity className="absolute top-10 right-4 z-10" onPress={() => setSelectedImage(null)}>
+            <Ionicons name="close" size={32} color="white" />
+          </TouchableOpacity>
+          {selectedImage && (
+            <Image
+              source={{ uri: selectedImage }}
+              style={{ width: '100%', height: '75%' }}
+              resizeMode="contain"
+            />
+          )}
         </View>
       </Modal>
     </SafeAreaView>

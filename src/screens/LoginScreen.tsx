@@ -33,6 +33,8 @@ const LoginScreen = () => {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showSuccessRibbon, setShowSuccessRibbon] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
 
   const handleSubmit = async () => {
     if (!formData.email || !formData.password) {
@@ -60,18 +62,15 @@ const LoginScreen = () => {
       
       // Use AuthContext login method with real backend data
       await login(data.access_token, data.user);
-      
-      // Show success feedback
-      Alert.alert(
-        "Success",
-        "Login successful! Welcome back.",
-        [
-          {
-            text: "OK",
-            onPress: () => navigation.navigate("Dashboard" as never),
-          },
-        ]
-      );
+
+      // Show success ribbon
+      setSuccessMessage("Login successful! Welcome back.");
+      setShowSuccessRibbon(true);
+      // Auto navigate after 1.5 seconds
+      setTimeout(() => {
+        setShowSuccessRibbon(false);
+        navigation.navigate("Dashboard" as never);
+      }, 1500);
     } catch (error) {
       console.error("Login error:", error);
       if (error instanceof Error) {
@@ -110,6 +109,13 @@ const LoginScreen = () => {
   return (
     <SafeAreaView className="flex-1 bg-gradient-to-br from-waterbase-50 to-enviro-50">
       <Navigation title="Sign In" showBackButton={true} />
+
+      {/* Success Ribbon */}
+      {showSuccessRibbon && (
+        <View className="bg-green-500 px-4 py-3">
+          <Text className="text-white text-center">{successMessage}</Text>
+        </View>
+      )}
 
       <ScrollView className="flex-1 px-4" showsVerticalScrollIndicator={false}>
         <View className="py-8">

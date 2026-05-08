@@ -171,10 +171,8 @@ const CommunityScreen = () => {
       setIsLoading(false);
       return;
     }
-    showLoading("Loading Community", "Fetching cleanup drives, organizations, and updates...");
     try {
       let feedPayload: any = { data: [] };
-      let directoryPayload: any = { data: [] };
       let userRequestsPayload: any = { data: [] };
       let userEventsPayload: any = [];
       let drivesPayload: any = [];
@@ -184,13 +182,6 @@ const CommunityScreen = () => {
         feedPayload = await res.json();
       } catch (e) {
         console.error("Failed to fetch community feed", e);
-      }
-
-      try {
-        const res = await apiRequest(API_ENDPOINTS.ORGANIZATIONS_DIRECTORY, { method: "GET" });
-        directoryPayload = await res.json();
-      } catch (e) {
-        console.error("Failed to fetch organizations directory", e);
       }
 
       try {
@@ -215,7 +206,6 @@ const CommunityScreen = () => {
       }
 
       setUpdates(Array.isArray(feedPayload?.data) ? feedPayload.data : []);
-      setOrganizations(Array.isArray(directoryPayload?.data) ? directoryPayload.data : []);
       setJoinRequests(Array.isArray(userRequestsPayload?.data) ? userRequestsPayload.data : []);
       setCleanupDrives(Array.isArray(drivesPayload) ? drivesPayload : Array.isArray(drivesPayload?.data) ? drivesPayload.data : []);
       const userEvents = Array.isArray(userEventsPayload) ? userEventsPayload : [];
@@ -238,13 +228,29 @@ const CommunityScreen = () => {
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
-      hideFeedback();
     }
   }, [hideFeedback, showError, showLoading, user]);
+
+  const fetchOrganizations = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await apiRequest(API_ENDPOINTS.ORGANIZATIONS_DIRECTORY, { method: "GET" });
+      const directoryPayload = await res.json();
+      setOrganizations(Array.isArray(directoryPayload?.data) ? directoryPayload.data : []);
+    } catch (e) {
+      console.error("Failed to fetch organizations directory", e);
+    }
+  }, [token]);
 
   useEffect(() => {
     fetchCommunityData();
   }, [fetchCommunityData]);
+
+  useEffect(() => {
+    if (activeSection === "organizations" && organizations.length === 0) {
+      fetchOrganizations();
+    }
+  }, [activeSection, fetchOrganizations, organizations.length]);
 
   const handleFollow = async (organizationId: number, isFollowing: boolean) => {
     if (isSubmitting) {
@@ -373,23 +379,22 @@ const CommunityScreen = () => {
       <SafeAreaView className="flex-1 bg-gradient-to-br from-waterbase-50 to-enviro-50">
         <Navigation title="Community" showBackButton={true} />
 
-        {isLoading ? (
-          <View className="flex-1 items-center justify-center">
-            <ActivityIndicator size="large" color="#0369a1" />
-          </View>
-        ) : (
-          <ScrollView
+        {/* Removed loading indicator to avoid annoying modal */}
+        <ScrollView
             className="flex-1 px-4"
             showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl
-                refreshing={isRefreshing}
-                onRefresh={() => {
-                  setIsRefreshing(true);
-                  fetchCommunityData();
-                }}
-              />
-            }
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshing}
+                  onRefresh={() => {
+                    setIsRefreshing(true);
+                    fetchCommunityData();
+                    if (activeSection === "organizations") {
+                      fetchOrganizations();
+                    }
+                  }}
+                />
+              }
           >
             <View className="py-6">
               <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-6">

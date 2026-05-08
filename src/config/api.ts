@@ -148,5 +148,14 @@ export const apiRequest = async (endpoint: string, options: RequestInit = {}) =>
   }
 };
 
+// Helper to get full image URL
+export const getImageUrl = (imagePath: string | null | undefined): string | null => {
+  if (!imagePath) return null;
+  if (imagePath.startsWith('http')) return imagePath;
+  // Assume relative path, prepend base URL (remove /api if present)
+  const base = API_CONFIG.BASE_URL.replace('/api', '');
+  return `${base}${imagePath.startsWith('/') ? '' : '/'}${imagePath}`;
+};
+
 export { API_CONFIG };
 export default API_CONFIG;

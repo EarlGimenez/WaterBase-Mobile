@@ -442,7 +442,7 @@ const MapViewScreen = () => {
           showSensors={viewMode === "research" || showLayers.sensors}
           onReportPress={(report) => {
             setSelectedReport(report as any);
-            expandBottomSheet();
+            // Removed expandBottomSheet() since map pin popup already shows info
           }}
           onSensorPress={(sensor) => {
             const realSensor = sensors.find(s => String(s.id) === sensor.id);

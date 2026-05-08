@@ -331,8 +331,8 @@ const ReportPollutionScreen = () => {
         const aiData = await response.json();
         console.log('AI Analysis Response:', aiData);
 
-        // Handle the response format: { predictions: {...}, ai_verified: boolean }
-        const pred = aiData.predictions;
+        // Handle the response format: { predictions: {...}, ai_verified: boolean } or direct predictions object
+        const pred = aiData.predictions || aiData;
         const aiVerified = aiData.ai_verified;
 
         console.log('Parsed predictions:', pred);
