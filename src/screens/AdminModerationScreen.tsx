@@ -20,6 +20,7 @@ import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { SearchableLocationSelect } from "../components/ui/SearchableLocationSelect";
 import Navigation from "../components/Navigation";
+import { setPerformanceMetricsEnabled as setGlobalPerformanceMetricsEnabled } from "../utils/performanceMetrics";
 
 type Report = {
   id: number;
@@ -236,6 +237,7 @@ const AdminModerationScreen: React.FC = () => {
   // Settings
   const [autoApproveEnabled, setAutoApproveEnabled] = useState(false);
   const [autoApproveThreshold, setAutoApproveThreshold] = useState(80);
+  const [performanceMetricsEnabled, setPerformanceMetricsEnabled] = useState(false);
   const [maintenanceHealth, setMaintenanceHealth] = useState<any>(null);
   const [maintenanceStats, setMaintenanceStats] = useState<any>(null);
   const [isMaintenanceBusy, setIsMaintenanceBusy] = useState(false);
@@ -344,6 +346,7 @@ const AdminModerationScreen: React.FC = () => {
         const data = await res.json();
         setAutoApproveEnabled(Boolean(data.auto_approve_enabled));
         setAutoApproveThreshold(Number(data.auto_approve_threshold));
+        setPerformanceMetricsEnabled(Boolean(data.performance_metrics_enabled));
       }
     } catch (e) {
       console.error("Error fetching settings:", e);
@@ -479,9 +482,11 @@ const AdminModerationScreen: React.FC = () => {
         body: JSON.stringify({
           auto_approve_enabled: autoApproveEnabled,
           auto_approve_threshold: autoApproveThreshold,
+          performance_metrics_enabled: performanceMetricsEnabled,
         }),
       });
       if (!res.ok) throw new Error("Failed");
+      setGlobalPerformanceMetricsEnabled(performanceMetricsEnabled);
       showMessage("Settings saved successfully");
     } catch (e) {
       showMessage("Failed to save settings", true);
@@ -1004,6 +1009,27 @@ const AdminModerationScreen: React.FC = () => {
               className="border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm"
               placeholder="0-100"
             />
+          </View>
+
+          <View className="mb-4">
+            <Text className="text-sm font-medium text-gray-700 mb-1">Performance Testing Readout</Text>
+            <Text className="text-xs text-gray-500 mb-2">
+              Shows screen, API, object count, and database timing at the bottom of app screens.
+            </Text>
+            <View className="flex-row space-x-2">
+              <TouchableOpacity
+                onPress={() => setPerformanceMetricsEnabled(true)}
+                className={`flex-1 py-2 rounded-lg border items-center ${performanceMetricsEnabled ? "bg-waterbase-500 border-waterbase-500" : "bg-white border-gray-300"}`}
+              >
+                <Text className={`text-sm font-medium ${performanceMetricsEnabled ? "text-white" : "text-gray-700"}`}>Enabled</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setPerformanceMetricsEnabled(false)}
+                className={`flex-1 py-2 rounded-lg border items-center ${!performanceMetricsEnabled ? "bg-waterbase-500 border-waterbase-500" : "bg-white border-gray-300"}`}
+              >
+                <Text className={`text-sm font-medium ${!performanceMetricsEnabled ? "text-white" : "text-gray-700"}`}>Disabled</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <Button title="Save Settings" onPress={handleSaveSettings} />

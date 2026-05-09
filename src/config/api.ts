@@ -1,4 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  countObjects,
+  isPerformanceMetricsEnabled,
+  readHeaderNumber,
+  recordPerformanceMetric,
+} from '../utils/performanceMetrics';
 
 const isDev = __DEV__;
 const IP_POOL = [
@@ -126,9 +132,31 @@ export const apiRequest = async (endpoint: string, options: RequestInit = {}) =>
       hasAuth: !!token
     });
     
+    const startedAt = Date.now();
     const response = await fetch(url, config);
+    const durationMs = Date.now() - startedAt;
     console.log('✅ API response status:', response.status);
     
+    if (isPerformanceMetricsEnabled()) {
+      const metricBase = {
+        method: config.method || 'GET',
+        path: url.replace(API_CONFIG.BASE_URL, ''),
+        status: response.status,
+        durationMs,
+        backendRequestMs: readHeaderNumber(response.headers, 'X-WaterBase-Request-Ms'),
+        backendDbMs: readHeaderNumber(response.headers, 'X-WaterBase-Db-Ms'),
+        backendDbQueries: readHeaderNumber(response.headers, 'X-WaterBase-Db-Queries'),
+      };
+
+      if (response.headers.get('content-type')?.includes('application/json') && typeof response.clone === 'function') {
+        response.clone().json()
+          .then((payload) => recordPerformanceMetric({ ...metricBase, objectCount: countObjects(payload) }))
+          .catch(() => recordPerformanceMetric({ ...metricBase, objectCount: null }));
+      } else {
+        recordPerformanceMetric({ ...metricBase, objectCount: null });
+      }
+    }
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error('❌ API Error Response:', errorText);
