@@ -4,6 +4,11 @@ const UNREAD_COUNT_CACHE_TTL_MS = 15000;
 let unreadCountCache: { value: number; fetchedAt: number } | null = null;
 let unreadCountInFlight: Promise<number> | null = null;
 
+export const clearNotificationCache = (): void => {
+  unreadCountCache = null;
+  unreadCountInFlight = null;
+};
+
 export interface NotificationItem {
   id: number;
   type: string;

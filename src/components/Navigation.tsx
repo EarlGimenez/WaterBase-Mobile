@@ -4,7 +4,7 @@ import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "../contexts/AuthContext";
-import { fetchUnreadCount } from "../services/notifications";
+import { clearNotificationCache, fetchUnreadCount } from "../services/notifications";
 import { resolveProfilePhotoUri } from "../utils/imageUrl";
 
 interface NavigationProps {
@@ -27,6 +27,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   useEffect(() => {
     if (!token || !isAuthenticated || !isFocused) {
       setUnreadCount(0);
+      clearNotificationCache();
       return;
     }
 

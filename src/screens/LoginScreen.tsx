@@ -5,7 +5,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  Alert,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -29,7 +28,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 const LoginScreen = () => {
   const navigation = useNavigation();
-  const { login, setGuestMode } = useAuth();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -121,23 +120,6 @@ const LoginScreen = () => {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleGuestMode = async () => {
-    Alert.alert(
-      "Continue as Guest",
-      "You'll have limited access to features. You can view reports and the map, but cannot access community features or submit reports.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Continue as Guest",
-          onPress: async () => {
-            await setGuestMode();
-            navigation.navigate("Home" as never);
-          },
-        },
-      ]
-    );
   };
 
   const handleGoogleToken = async (idToken: string) => {
@@ -261,7 +243,7 @@ const LoginScreen = () => {
                 </View>
 
                 {/* Remember Me & Forgot Password */}
-                <View className="flex-row items-center justify-between mt-4">
+                <View className="flex-row items-center justify-between mt-4 mb-2">
                   <TouchableOpacity
                     onPress={() =>
                       setFormData({ ...formData, rememberMe: !formData.rememberMe })
@@ -304,11 +286,11 @@ const LoginScreen = () => {
                       <Ionicons name="log-in" size={20} color="white" />
                     )
                   }
-                  className="w-full mt-8"
+                  className="w-full mt-4"
                 />
 
                 {/* Divider */}
-                <View className="relative my-6">
+                <View className="relative mt-6 mb-1">
                   <View className="absolute inset-0 flex items-center">
                     <View className="w-full border-t border-gray-300" />
                   </View>
@@ -329,22 +311,10 @@ const LoginScreen = () => {
                     <Ionicons name="logo-google" size={20} color="#4285F4" />
                     <Text className="ml-2 text-gray-700 font-medium">Google</Text>
                   </TouchableOpacity>
+                  <Text className="text-gray-500 text-xs text-center mt-2">
+                    Google sign-in creates volunteer accounts only. Organizations should sign up with email.
+                  </Text>
                 </View>
-
-                {/* Continue as Guest Button */}
-                <TouchableOpacity
-                  onPress={handleGuestMode}
-                  className="w-full border-2 border-dashed border-waterbase-300 rounded-lg p-4 items-center mt-4"
-                  disabled={isLoading}
-                >
-                  <Ionicons name="eye" size={24} color="#0ea5e9" />
-                  <Text className="text-waterbase-600 font-semibold mt-2">
-                    Continue as Guest
-                  </Text>
-                  <Text className="text-waterbase-500 text-xs text-center mt-1">
-                    Limited access to view reports and map
-                  </Text>
-                </TouchableOpacity>
 
                 {/* Sign Up Link */}
                 <View className="text-center mt-6">

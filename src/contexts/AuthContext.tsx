@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 import { registerPushNotificationsForUser, revokePushNotificationsForUser } from '../services/pushNotifications';
+import { clearNotificationCache } from '../services/notifications';
 
 export interface User {
   id: number;
@@ -83,15 +84,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
+      clearNotificationCache();
+      const tokenToRevoke = token;
+      await AsyncStorage.multiRemove(['auth_token', 'user', 'guest_mode']);
+      setToken(null);
+      setUser(null);
+      setIsGuest(false);
+
       // Make API call to logout using mobile-compatible URL
-      if (token) {
-        await revokePushNotificationsForUser(token);
+      if (tokenToRevoke) {
+        await revokePushNotificationsForUser(tokenToRevoke);
 
         console.log('Logout: Making API call to backend');
         await apiRequest(API_ENDPOINTS.LOGOUT, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${tokenToRevoke}`,
           },
         });
         console.log('Logout: API call successful');
@@ -99,12 +107,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Logout API error:', error);
       // Continue with local logout even if API fails
-    } finally {
-      // Clear local storage regardless of API result
-      await AsyncStorage.multiRemove(['auth_token', 'user', 'guest_mode']);
-      setToken(null);
-      setUser(null);
-      setIsGuest(false);
     }
   };
 
