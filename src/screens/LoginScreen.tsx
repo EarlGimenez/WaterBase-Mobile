@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ScrollView,
   View,
@@ -11,6 +11,8 @@ import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import * as AuthSession from "expo-auth-session";
+import * as WebBrowser from "expo-web-browser";
 import { Button } from "../components/ui/Button";
 import {
   Card,
@@ -22,6 +24,8 @@ import {
 import Navigation from "../components/Navigation";
 import { useAuth } from "../contexts/AuthContext";
 import { API_ENDPOINTS, apiRequest } from "../config/api";
+
+WebBrowser.maybeCompleteAuthSession();
 
 const LoginScreen = () => {
   const navigation = useNavigation();
@@ -35,6 +39,36 @@ const LoginScreen = () => {
   const [error, setError] = useState("");
   const [showSuccessRibbon, setShowSuccessRibbon] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
+  const googleClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || "";
+  const redirectUri = AuthSession.makeRedirectUri({
+    scheme: "waterbase",
+    path: "auth/google",
+  });
+  const [googleRequest, googleResponse, promptGoogleAsync] = AuthSession.useAuthRequest(
+    {
+      clientId: googleClientId,
+      redirectUri,
+      responseType: AuthSession.ResponseType.IdToken,
+      scopes: ["openid", "profile", "email"],
+    },
+    {
+      authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+    }
+  );
+
+  useEffect(() => {
+    if (googleResponse?.type !== "success") {
+      return;
+    }
+
+    const idToken = googleResponse.params.id_token;
+    if (!idToken) {
+      setError("Google sign-in did not return an identity token.");
+      return;
+    }
+
+    handleGoogleToken(idToken);
+  }, [googleResponse]);
 
   const handleSubmit = async () => {
     if (!formData.email || !formData.password) {
@@ -104,6 +138,40 @@ const LoginScreen = () => {
         },
       ]
     );
+  };
+
+  const handleGoogleToken = async (idToken: string) => {
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const response = await apiRequest(API_ENDPOINTS.GOOGLE_MOBILE, {
+        method: "POST",
+        body: JSON.stringify({ id_token: idToken }),
+      });
+      const data = await response.json();
+      await login(data.access_token, data.user);
+
+      if (data.user?.profile_completed === false) {
+        navigation.navigate("CompleteProfile" as never);
+        return;
+      }
+
+      navigation.navigate("Dashboard" as never);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Google sign-in failed. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (!googleClientId) {
+      setError("Google sign-in is not configured for this app.");
+      return;
+    }
+
+    await promptGoogleAsync();
   };
 
   return (
@@ -214,7 +282,7 @@ const LoginScreen = () => {
                     </View>
                     <Text className="text-sm text-gray-700">Remember me</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity disabled={isLoading}>
+                  <TouchableOpacity disabled={isLoading} onPress={() => navigation.navigate("ForgotPassword" as never)}>
                     <Text className="text-sm text-waterbase-600">
                       Forgot password?
                     </Text>
@@ -251,21 +319,15 @@ const LoginScreen = () => {
                   </View>
                 </View>
 
-                {/* Social Login Buttons */}
-                <View className="flex-row space-x-3">
+                {/* Social Login Button */}
+                <View>
                   <TouchableOpacity
-                    className="flex-1 border border-gray-300 rounded-lg p-3 flex-row items-center justify-center bg-white"
-                    disabled
+                    className="w-full border border-gray-300 rounded-lg p-3 flex-row items-center justify-center bg-white"
+                    onPress={handleGoogleSignIn}
+                    disabled={isLoading || !googleRequest}
                   >
                     <Ionicons name="logo-google" size={20} color="#4285F4" />
                     <Text className="ml-2 text-gray-700 font-medium">Google</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    className="flex-1 border border-gray-300 rounded-lg p-3 flex-row items-center justify-center bg-white"
-                    disabled
-                  >
-                    <Ionicons name="logo-facebook" size={20} color="#1877F2" />
-                    <Text className="ml-2 text-gray-700 font-medium">Facebook</Text>
                   </TouchableOpacity>
                 </View>
 

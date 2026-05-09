@@ -135,7 +135,7 @@ const getEventStatusColor = (status?: string) => {
 };
 
 const shouldShowOrganizationFields = (role?: string) => {
-  return ["ngo", "lgu", "researcher"].includes((role || "").toLowerCase());
+  return ["ngo", "lgu"].includes((role || "").toLowerCase());
 };
 
 const AdminModerationScreen: React.FC = () => {

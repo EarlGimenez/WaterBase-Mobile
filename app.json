@@ -2,6 +2,7 @@
   "expo": {
     "name": "WaterBase Mobile",
     "slug": "waterbase-mobile",
+    "scheme": "waterbase",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

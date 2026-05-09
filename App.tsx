@@ -9,6 +9,8 @@ import * as Notifications from "expo-notifications";
 import HomeScreen from "./src/screens/HomeScreen";
 import LoginScreen from "./src/screens/LoginScreen";
 import RegisterScreen from "./src/screens/RegisterScreen";
+import ForgotPasswordScreen from "./src/screens/ForgotPasswordScreen";
+import CompleteProfileScreen from "./src/screens/CompleteProfileScreen";
 import DashboardScreen from "./src/screens/DashboardScreen";
 import ReportPollutionScreen from "./src/screens/ReportPollutionScreen";
 import MapViewScreen from "./src/screens/MapViewScreen";
@@ -70,7 +72,7 @@ export default function App() {
     };
   }, []);
 
-  const ScreenWithLayout = (Component: React.ComponentType) => {
+  const ScreenWithLayout = (Component: React.ComponentType<any>) => {
     return (props: any) => (
       <Layout>
         <Component {...props} />
@@ -89,6 +91,8 @@ export default function App() {
               config: {
                 screens: {
                   QRScanner: "event/:eventId/attend",
+                  Login: "login",
+                  CompleteProfile: "complete-profile",
                 },
               },
             }}
@@ -102,6 +106,8 @@ export default function App() {
               <Stack.Screen name="Home" component={ScreenWithLayout(HomeScreen)} />
               <Stack.Screen name="Login" component={LoginScreen} />
               <Stack.Screen name="Register" component={RegisterScreen} />
+              <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+              <Stack.Screen name="CompleteProfile" component={CompleteProfileScreen} />
               <Stack.Screen name="Dashboard" component={ScreenWithLayout(DashboardScreen)} />
               <Stack.Screen name="ReportPollution" component={ScreenWithLayout(ReportPollutionScreen)} />
               <Stack.Screen name="MapView" component={ScreenWithLayout(MapViewScreen)} />

@@ -76,7 +76,7 @@ type CleanupDrive = {
 
 const CommunityScreen = () => {
   const navigation = useNavigation();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { showLoading, showProcessing, showSuccess, showError, hideFeedback } = useFeedback();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -94,7 +94,7 @@ const CommunityScreen = () => {
 
   const isOrganizationAccount = useMemo(() => {
     const role = (user?.role || "").toLowerCase();
-    return role === "ngo" || role === "lgu" || role === "researcher";
+    return role === "ngo" || role === "lgu";
   }, [user?.role]);
 
   const isVolunteer = useMemo(() => {
@@ -104,7 +104,7 @@ const CommunityScreen = () => {
 
   const canJoinOrganizations = useMemo(() => {
     const role = (user?.role || "").toLowerCase();
-    return role !== "ngo" && role !== "lgu" && role !== "admin";
+    return role !== "ngo" && role !== "lgu" && role !== "admin" && role !== "researcher";
   }, [user?.role]);
 
   const getUpdateIcon = (type: string) => {
@@ -371,7 +371,7 @@ const CommunityScreen = () => {
   };
 
   const openOrganizationProfile = (organizationId: number) => {
-    navigation.navigate("OrganizationProfile" as never, { organizationId } as never);
+    (navigation as any).navigate("OrganizationProfile", { organizationId });
   };
 
   return (
@@ -647,7 +647,6 @@ const CommunityScreen = () => {
               )}
             </View>
           </ScrollView>
-        )}
 
         <Modal visible={!!selectedDrive} transparent animationType="slide" onRequestClose={() => setSelectedDrive(null)}>
           <View className="flex-1 bg-black/50 justify-end">

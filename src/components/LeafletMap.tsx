@@ -29,6 +29,7 @@ interface LeafletMapProps {
   showSensors?: boolean;
   onReportPress?: (report: Report) => void;
   onSensorPress?: (sensor: SensorStation) => void;
+  onMapPress?: (coordinate: { latitude: number; longitude: number }) => void;
   center?: { latitude: number; longitude: number };
   style?: any;
 }
@@ -40,6 +41,7 @@ const LeafletMap: React.FC<LeafletMapProps> = ({
   showSensors = false,
   onReportPress,
   onSensorPress,
+  onMapPress,
   center = { latitude: 14.5995, longitude: 120.9842 },
   style,
 }) => {
@@ -181,6 +183,16 @@ const LeafletMap: React.FC<LeafletMapProps> = ({
                 map.setView([lat, lng], map.getZoom());
             };
 
+            map.on('click', function(e) {
+                window.ReactNativeWebView?.postMessage(JSON.stringify({
+                    type: 'mapPress',
+                    data: {
+                        latitude: e.latlng.lat,
+                        longitude: e.latlng.lng
+                    }
+                }));
+            });
+
             // Add user location button
             L.Control.UserLocation = L.Control.extend({
                 onAdd: function(map) {
@@ -226,6 +238,9 @@ const LeafletMap: React.FC<LeafletMapProps> = ({
           break;
         case 'sensorPress':
           onSensorPress?.(message.data);
+          break;
+        case 'mapPress':
+          onMapPress?.(message.data);
           break;
         case 'locationRequest':
           // Handle location request if needed

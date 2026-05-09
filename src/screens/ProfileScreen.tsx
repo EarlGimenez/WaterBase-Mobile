@@ -66,7 +66,7 @@ const ProfileScreen = () => {
   const [isActivitiesLoading, setIsActivitiesLoading] = useState(false);
 
   const shouldRequireArea = (role?: string) => {
-    return ['ngo', 'lgu', 'researcher'].includes((role || '').toLowerCase());
+    return ['ngo', 'lgu'].includes((role || '').toLowerCase());
   };
 
   const handleLogout = () => {
@@ -219,6 +219,14 @@ const ProfileScreen = () => {
   }, [user]);
 
   const fetchUserOrganizations = async () => {
+    if ((user?.role || '').toLowerCase() === 'researcher') {
+      setJoinedOrganizations([]);
+      setFollowedOrganizations([]);
+      setMembers([]);
+      setFollowers([]);
+      return;
+    }
+
     try {
       setIsOrganizationsLoading(true);
       showLoading('Loading Organizations', 'Fetching your organizations...');
@@ -609,15 +617,19 @@ const ProfileScreen = () => {
         <View className="px-4 mb-6">
           <View className="flex-row space-x-2 mb-4">
             <TabButton id="activity" title="Activity" isActive={activeTab === 'activity'} />
-            {['ngo', 'lgu', 'admin'].includes((user?.role || '').toLowerCase()) ? (
-              <TabButton id="following" title="Following" isActive={activeTab === 'following'} textClassName="text-[13px] leading-[14px]" buttonClassName="items-center justify-center" />
-            ) : (
-              <TabButton id="joined" title="Groups Joined" isActive={activeTab === 'joined'} />
+            {(user?.role || '').toLowerCase() !== 'researcher' && (
+              ['ngo', 'lgu', 'admin'].includes((user?.role || '').toLowerCase()) ? (
+                <TabButton id="following" title="Following" isActive={activeTab === 'following'} textClassName="text-[13px] leading-[14px]" buttonClassName="items-center justify-center" />
+              ) : (
+                <TabButton id="joined" title="Groups Joined" isActive={activeTab === 'joined'} />
+              )
             )}
-            {['ngo', 'lgu', 'admin'].includes((user?.role || '').toLowerCase()) ? (
-              <TabButton id="network" title="Network" isActive={activeTab === 'network'} />
-            ) : (
-              <TabButton id="followed" title="Following" isActive={activeTab === 'followed'} textClassName="text-[13px] leading-[14px]" buttonClassName="items-center justify-center" />
+            {(user?.role || '').toLowerCase() !== 'researcher' && (
+              ['ngo', 'lgu', 'admin'].includes((user?.role || '').toLowerCase()) ? (
+                <TabButton id="network" title="Network" isActive={activeTab === 'network'} />
+              ) : (
+                <TabButton id="followed" title="Following" isActive={activeTab === 'followed'} textClassName="text-[13px] leading-[14px]" buttonClassName="items-center justify-center" />
+              )
             )}
             <TabButton id="settings" title="Settings" isActive={activeTab === 'settings'} />
           </View>

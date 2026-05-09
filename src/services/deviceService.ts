@@ -2,6 +2,7 @@ import { API_ENDPOINTS, API_CONFIG, apiRequest } from '../config/api';
 
 export interface DeviceTelemetry {
   id: number;
+  device_id?: number;
   recorded_at?: string;
   received_at?: string;
   latency_ms?: number | null;
@@ -10,6 +11,9 @@ export interface DeviceTelemetry {
   turbidity_ntu?: number | string | null;
   tds_mg_l?: number | string | null;
   water_level_cm?: number | string | null;
+  dissolved_oxygen_mg_l?: number | string | null;
+  conductivity_us_cm?: number | string | null;
+  raw_payload?: Record<string, unknown> | null;
 }
 
 export interface DeviceSummary {
@@ -75,6 +79,96 @@ export interface MapSensor {
   latest_telemetry: DeviceTelemetry | null;
 }
 
+export interface DailyMetrics {
+  id: number;
+  device_id: number;
+  date: string;
+  avg_ph: number | null;
+  avg_tds_mg_l: number | null;
+  avg_turbidity_ntu: number | null;
+  avg_temp_celsius: number | null;
+  min_ph: number | null;
+  max_ph: number | null;
+  min_tds_mg_l: number | null;
+  max_tds_mg_l: number | null;
+  min_turbidity_ntu: number | null;
+  max_turbidity_ntu: number | null;
+  reading_count: number;
+}
+
+export interface MonthlyMetrics {
+  id: number;
+  device_id: number;
+  year_month: string;
+  avg_ph: number | null;
+  avg_tds_mg_l: number | null;
+  avg_turbidity_ntu: number | null;
+  avg_temp_celsius: number | null;
+  min_ph: number | null;
+  max_ph: number | null;
+  min_tds_mg_l: number | null;
+  max_tds_mg_l: number | null;
+  min_turbidity_ntu: number | null;
+  max_turbidity_ntu: number | null;
+  reading_count: number;
+}
+
+export interface LatencyMetrics {
+  device_id: number;
+  station_id: string | null;
+  message_count: number;
+  average_latency_ms: number | null;
+  min_latency_ms: number | null;
+  max_latency_ms: number | null;
+  p50_latency_ms: number | null;
+  p95_latency_ms: number | null;
+  p99_latency_ms: number | null;
+  std_dev_ms: number | null;
+  period: {
+    from: string | null;
+    to: string | null;
+  };
+}
+
+export interface HourlyTrend {
+  hour: string;
+  message_count: number;
+  average_latency_ms: number;
+  min_latency_ms: number;
+  max_latency_ms: number;
+}
+
+export interface DeliveryMetrics {
+  period: {
+    from: string;
+    to: string;
+    days: number;
+  };
+  expected_messages: number;
+  actual_messages: number;
+  delivery_rate_percent: number;
+  missing_messages: number;
+}
+
+export interface PerformanceReport {
+  device: {
+    id: number;
+    mac_address: string;
+    station_id: string | null;
+    status: string;
+    paired_at: string | null;
+  };
+  period: {
+    from: string;
+    to: string;
+    duration_days: number;
+  };
+  latency_metrics: LatencyMetrics;
+  delivery_metrics: DeliveryMetrics;
+  hourly_trends: HourlyTrend[];
+  generated_at: string;
+}
+
 export interface PaginatedResponse<T> {
   data: T[];
   total: number;
@@ -84,6 +178,30 @@ export interface PaginatedResponse<T> {
 }
 
 export const deviceService = {
+  async listDevices(page = 1, perPage = 20, status?: string): Promise<PaginatedResponse<DeviceSummary>> {
+    const params = new URLSearchParams({
+      page: String(page),
+      per_page: String(perPage),
+    });
+
+    if (status) {
+      params.append('status', status);
+    }
+
+    const response = await apiRequest(`${API_ENDPOINTS.DEVICES}?${params.toString()}`, { method: 'GET' });
+    return response.json();
+  },
+
+  async listDiscoveredDevices(page = 1, perPage = 20): Promise<PaginatedResponse<DeviceSummary>> {
+    const params = new URLSearchParams({
+      page: String(page),
+      per_page: String(perPage),
+    });
+
+    const response = await apiRequest(`${API_ENDPOINTS.DEVICES_DISCOVERED}?${params.toString()}`, { method: 'GET' });
+    return response.json();
+  },
+
   async getDiscoveredDevices(): Promise<DeviceSummary[]> {
     const response = await apiRequest(API_ENDPOINTS.DEVICES_DISCOVERED, { method: 'GET' });
     const payload = await response.json();
@@ -151,6 +269,10 @@ export const deviceService = {
     return payload.schedule;
   },
 
+  async deleteDevice(deviceId: number): Promise<void> {
+    await apiRequest(API_ENDPOINTS.DEVICE(deviceId), { method: 'DELETE' });
+  },
+
   async getActivityLogs(deviceId: number, page = 1, perPage = 20): Promise<PaginatedResponse<ActivityLog>> {
     const response = await apiRequest(`${API_ENDPOINTS.DEVICE_ACTIVITY_LOGS(deviceId)}?page=${page}&per_page=${perPage}`, { method: 'GET' });
     return response.json();
@@ -172,6 +294,33 @@ export const deviceService = {
     return payload?.latest_telemetry ?? null;
   },
 
+  async getTelemetryHistory(deviceId: number, page = 1, perPage = 50): Promise<PaginatedResponse<DeviceTelemetry>> {
+    const params = new URLSearchParams({
+      page: String(page),
+      per_page: String(perPage),
+    });
+    const response = await apiRequest(`${API_ENDPOINTS.DEVICE_TELEMETRY_HISTORY(deviceId)}?${params.toString()}`, { method: 'GET' });
+    return response.json();
+  },
+
+  async getDailyMetrics(deviceId: number, from?: string, to?: string): Promise<DailyMetrics[]> {
+    const params = new URLSearchParams();
+    if (from) params.append('from', from);
+    if (to) params.append('to', to);
+    const query = params.toString();
+    const response = await apiRequest(`${API_ENDPOINTS.DEVICE_METRICS_DAILY(deviceId)}${query ? `?${query}` : ''}`, { method: 'GET' });
+    return response.json();
+  },
+
+  async getMonthlyMetrics(deviceId: number, from?: string, to?: string): Promise<MonthlyMetrics[]> {
+    const params = new URLSearchParams();
+    if (from) params.append('from', from);
+    if (to) params.append('to', to);
+    const query = params.toString();
+    const response = await apiRequest(`${API_ENDPOINTS.DEVICE_METRICS_MONTHLY(deviceId)}${query ? `?${query}` : ''}`, { method: 'GET' });
+    return response.json();
+  },
+
   async triggerCommand(deviceId: number, commandType: 'pairing_confirmation' | 'live_read', payload: Record<string, unknown> = {}): Promise<void> {
     await apiRequest(API_ENDPOINTS.DEVICE_COMMANDS(deviceId), {
       method: 'POST',
@@ -188,6 +337,38 @@ export const deviceService = {
 
   async getMapSensors(): Promise<MapSensor[]> {
     const response = await apiRequest(API_ENDPOINTS.DEVICES_MAP, { method: 'GET' });
+    return response.json();
+  },
+
+  async getPerformanceMetrics(deviceId: number, from?: string, to?: string): Promise<LatencyMetrics> {
+    const params = new URLSearchParams({ report_type: 'metrics' });
+    if (from) params.append('from', from);
+    if (to) params.append('to', to);
+    const response = await apiRequest(`${API_CONFIG.BASE_URL}/devices/${deviceId}/performance?${params.toString()}`, { method: 'GET' });
+    return response.json();
+  },
+
+  async getPerformanceTrends(deviceId: number, from?: string, to?: string): Promise<HourlyTrend[]> {
+    const params = new URLSearchParams({ report_type: 'trends' });
+    if (from) params.append('from', from);
+    if (to) params.append('to', to);
+    const response = await apiRequest(`${API_CONFIG.BASE_URL}/devices/${deviceId}/performance?${params.toString()}`, { method: 'GET' });
+    return response.json();
+  },
+
+  async getDeliveryMetrics(deviceId: number, from?: string, to?: string): Promise<DeliveryMetrics> {
+    const params = new URLSearchParams({ report_type: 'delivery' });
+    if (from) params.append('from', from);
+    if (to) params.append('to', to);
+    const response = await apiRequest(`${API_CONFIG.BASE_URL}/devices/${deviceId}/performance?${params.toString()}`, { method: 'GET' });
+    return response.json();
+  },
+
+  async getFullPerformanceReport(deviceId: number, from?: string, to?: string): Promise<PerformanceReport> {
+    const params = new URLSearchParams({ report_type: 'full' });
+    if (from) params.append('from', from);
+    if (to) params.append('to', to);
+    const response = await apiRequest(`${API_CONFIG.BASE_URL}/devices/${deviceId}/performance?${params.toString()}`, { method: 'GET' });
     return response.json();
   },
 };

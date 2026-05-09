@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import Navigation from "../components/Navigation";
@@ -7,6 +7,7 @@ import ProtectedContent from "../components/ProtectedContent";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
 import { API_ENDPOINTS, apiRequest } from "../config/api";
 import { useFeedback } from "../contexts/FeedbackContext";
+import { useAuth } from "../contexts/AuthContext";
 
 type OrganizationUpdate = {
   id: number;
@@ -51,6 +52,8 @@ interface OrganizationProfileScreenProps {
 const OrganizationProfileScreen: React.FC<OrganizationProfileScreenProps> = ({ route }) => {
   const organizationId = route.params?.organizationId;
   const { showLoading, showProcessing, showSuccess, showError, hideFeedback } = useFeedback();
+  const { user } = useAuth();
+  const isResearcher = (user?.role || "").toLowerCase() === "researcher";
 
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -236,6 +239,7 @@ const OrganizationProfileScreen: React.FC<OrganizationProfileScreenProps> = ({ r
                     <Text className="text-waterbase-700 text-sm">{profile?.organization.members_count ?? 0} members</Text>
                   </View>
 
+                  {!isResearcher && (
                   <View className="flex-row space-x-2">
                     <TouchableOpacity
                       onPress={handleFollowToggle}
@@ -267,6 +271,7 @@ const OrganizationProfileScreen: React.FC<OrganizationProfileScreenProps> = ({ r
                       </TouchableOpacity>
                     )}
                   </View>
+                  )}
                 </CardContent>
               </Card>
 

@@ -8,13 +8,13 @@ import {
   Alert,
   TextInput,
   Modal,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LineChart } from 'react-native-chart-kit';
 import { useAuth } from '../contexts/AuthContext';
-import { API_CONFIG } from '../config/api';
-import { deviceService, DeviceSummary, MaintenanceLog, ActivityLog } from '../services/deviceService';
+import { deviceService, DeviceSummary, MaintenanceLog, ActivityLog, DailyMetrics, LatencyMetrics, DeliveryMetrics } from '../services/deviceService';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import Navigation from '../components/Navigation';
@@ -67,6 +67,9 @@ const DeviceDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const [activityPage, setActivityPage] = useState(1);
   const [activityLastPage, setActivityLastPage] = useState(1);
   const [activityLoading, setActivityLoading] = useState(false);
+  const [dailyMetrics, setDailyMetrics] = useState<DailyMetrics[]>([]);
+  const [latencyMetrics, setLatencyMetrics] = useState<LatencyMetrics | null>(null);
+  const [deliveryMetrics, setDeliveryMetrics] = useState<DeliveryMetrics | null>(null);
 
   const fetchDevice = useCallback(async () => {
     try {
@@ -77,10 +80,17 @@ const DeviceDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         setScheduleInterval(d.maintenance_schedule.calibration_interval_days);
         setScheduleReminder(d.maintenance_schedule.reminder_days_before);
       }
-      const maintenance = await deviceService.getMaintenance(deviceId);
+      const [maintenance, daily, latency, delivery] = await Promise.all([
+        deviceService.getMaintenance(deviceId),
+        deviceService.getDailyMetrics(deviceId),
+        deviceService.getPerformanceMetrics(deviceId).catch(() => null),
+        deviceService.getDeliveryMetrics(deviceId).catch(() => null),
+      ]);
       setLogs(maintenance.logs);
-      await fetchTelemetry(1);
-      await fetchActivityLogs(1);
+      setDailyMetrics(daily);
+      setLatencyMetrics(latency);
+      setDeliveryMetrics(delivery);
+      await Promise.all([fetchTelemetry(1), fetchActivityLogs(1)]);
     } catch (error) {
       console.error('Failed to load device:', error);
       Alert.alert('Error', 'Failed to load device details.');
@@ -92,16 +102,7 @@ const DeviceDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const fetchTelemetry = async (page: number) => {
     try {
       setTelemetryLoading(true);
-      const response = await fetch(
-        `${API_CONFIG.BASE_URL}/devices/${deviceId}/telemetry?page=${page}&per_page=10`,
-        {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${await AsyncStorage.getItem('auth_token')}`,
-          },
-        }
-      );
-      const data = await response.json();
+      const data = await deviceService.getTelemetryHistory(deviceId, page, 10);
       setTelemetryData(data.data || []);
       setTelemetryPage(data.current_page || 1);
       setTelemetryLastPage(data.last_page || 1);
@@ -272,11 +273,94 @@ const DeviceDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             </TouchableOpacity>
             <TouchableOpacity
               className="flex-1 min-w-[120px] items-center justify-center rounded-xl border border-waterbase-200 px-4 py-3"
+              onPress={fetchDevice}
+            >
+              <Text className="text-waterbase-700 font-semibold">Refresh Data</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              className="flex-1 min-w-[120px] items-center justify-center rounded-xl border border-waterbase-200 px-4 py-3"
               onPress={() => setScheduleModalOpen(true)}
             >
               <Text className="text-waterbase-700 font-semibold">Edit Schedule</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Performance */}
+          <Card className="mb-4">
+            <CardHeader>
+              <CardTitle className="text-waterbase-950">Performance</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <View className="flex-row flex-wrap gap-3">
+                <View className="flex-1 min-w-[100px] rounded-lg bg-waterbase-50 p-3">
+                  <Text className="text-xs text-waterbase-500">Messages</Text>
+                  <Text className="text-lg font-bold text-waterbase-950">
+                    {latencyMetrics?.message_count ?? '--'}
+                  </Text>
+                </View>
+                <View className="flex-1 min-w-[100px] rounded-lg bg-waterbase-50 p-3">
+                  <Text className="text-xs text-waterbase-500">Avg Latency</Text>
+                  <Text className="text-lg font-bold text-waterbase-950">
+                    {latencyMetrics?.average_latency_ms != null ? `${Math.round(latencyMetrics.average_latency_ms)} ms` : '--'}
+                  </Text>
+                </View>
+                <View className="flex-1 min-w-[100px] rounded-lg bg-waterbase-50 p-3">
+                  <Text className="text-xs text-waterbase-500">Delivery</Text>
+                  <Text className="text-lg font-bold text-waterbase-950">
+                    {deliveryMetrics?.delivery_rate_percent != null ? `${deliveryMetrics.delivery_rate_percent}%` : '--'}
+                  </Text>
+                </View>
+              </View>
+            </CardContent>
+          </Card>
+
+          {/* Daily Metrics */}
+          <Card className="mb-4">
+            <CardHeader>
+              <CardTitle className="text-waterbase-950">Daily Aggregates</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {dailyMetrics.length === 0 ? (
+                <Text className="text-waterbase-500">No aggregated data available.</Text>
+              ) : (
+                <LineChart
+                  data={{
+                    labels: dailyMetrics.slice(-6).map((item) => item.date.slice(5)),
+                    datasets: [
+                      {
+                        data: dailyMetrics.slice(-6).map((item) => Number(item.avg_ph ?? 0)),
+                        color: () => '#2563eb',
+                      },
+                      {
+                        data: dailyMetrics.slice(-6).map((item) => Number(item.avg_turbidity_ntu ?? 0)),
+                        color: () => '#7c3aed',
+                      },
+                    ],
+                    legend: ['pH', 'Turbidity'],
+                  }}
+                  width={Math.max(Dimensions.get('window').width - 64, 280)}
+                  height={220}
+                  yAxisLabel=""
+                  yAxisSuffix=""
+                  chartConfig={{
+                    backgroundColor: '#ffffff',
+                    backgroundGradientFrom: '#ffffff',
+                    backgroundGradientTo: '#ffffff',
+                    decimalPlaces: 1,
+                    color: (opacity = 1) => `rgba(3, 105, 161, ${opacity})`,
+                    labelColor: () => '#475569',
+                    propsForDots: {
+                      r: '3',
+                      strokeWidth: '1',
+                      stroke: '#0369a1',
+                    },
+                  }}
+                  bezier
+                  style={{ borderRadius: 12 }}
+                />
+              )}
+            </CardContent>
+          </Card>
 
           {/* Telemetry */}
           <Card className="mb-4">

@@ -43,7 +43,7 @@ const RegisterScreen = () => {
   ];
 
   const shouldShowOrganizationFields = (role: string) => {
-    return ['ngo', 'lgu', 'researcher'].includes(role);
+    return ['ngo', 'lgu'].includes(role);
   };
 
   const pickProofDocument = async () => {

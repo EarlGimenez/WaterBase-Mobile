@@ -2,12 +2,14 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, RefreshControl, ScrollView, Text, TextInput, View, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import Layout from '../components/Layout';
 import Navigation from '../components/Navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/Card';
 import { deviceService, DeviceSummary } from '../services/deviceService';
 import { useAuth } from '../contexts/AuthContext';
 import LeafletMap from '../components/LeafletMap';
+import { getCurrentLocation } from '../utils/location';
 
 const statusStyles: Record<string, { label: string; background: string; color: string }> = {
   awaiting_pair: { label: 'Awaiting pair', background: '#FEF3C7', color: '#92400E' },
@@ -17,40 +19,36 @@ const statusStyles: Record<string, { label: string; background: string; color: s
 };
 
 const DevicePairingScreen = () => {
+  const navigation = useNavigation<any>();
   const { requireAuth, user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [stationIds, setStationIds] = useState<Record<number, string>>({});
+  const [deviceNames, setDeviceNames] = useState<Record<number, string>>({});
   const [selectedLocations, setSelectedLocations] = useState<Record<number, { latitude: number; longitude: number }>>({});
+  const [filter, setFilter] = useState<'all' | 'discovered' | 'paired'>('all');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [actionDeviceId, setActionDeviceId] = useState<number | null>(null);
 
   const loadDevices = useCallback(async () => {
     setIsLoading(true);
     try {
-      const discovered = await deviceService.getDiscoveredDevices();
-      const paired = await deviceService.getPairedDevices();
-      const merged = [...discovered, ...paired].reduce<DeviceSummary[]>((accumulator, device) => {
-        if (!accumulator.some((item) => item.id === device.id)) {
-          accumulator.push(device);
-        }
-        return accumulator;
-      }, []);
+      const response = filter === 'discovered'
+        ? await deviceService.listDiscoveredDevices(page, 20)
+        : await deviceService.listDevices(page, 20, filter === 'paired' ? 'paired' : undefined);
 
-      merged.sort((a, b) => {
-        const aTime = new Date(a.discovery_last_seen_at || a.last_seen_at || 0).getTime();
-        const bTime = new Date(b.discovery_last_seen_at || b.last_seen_at || 0).getTime();
-        return bTime - aTime;
-      });
-
-      setDevices(merged);
+      setDevices(response.data || []);
+      setTotalPages(response.last_page || 1);
     } catch (error) {
       console.error('Failed to load devices:', error);
       Alert.alert('Device list unavailable', 'Unable to fetch device discovery data right now.');
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [filter, page]);
 
   useEffect(() => {
     if (!requireAuth()) {
@@ -80,10 +78,11 @@ const DevicePairingScreen = () => {
     const location = selectedLocations[device.id];
 
     try {
+      setActionDeviceId(device.id);
       const pairedDevice = await deviceService.pairDevice(
         device.id,
         stationId,
-        device.name || undefined,
+        deviceNames[device.id]?.trim() || device.name || undefined,
         location?.latitude,
         location?.longitude
       );
@@ -92,7 +91,47 @@ const DevicePairingScreen = () => {
     } catch (error) {
       console.error('Pairing failed:', error);
       Alert.alert('Pairing failed', 'Laravel could not pair the selected device.');
+    } finally {
+      setActionDeviceId(null);
     }
+  };
+
+  const handleUseCurrentLocation = async (deviceId: number) => {
+    try {
+      const location = await getCurrentLocation();
+      setSelectedLocations((current) => ({
+        ...current,
+        [deviceId]: location,
+      }));
+    } catch (error) {
+      Alert.alert('Location unavailable', error instanceof Error ? error.message : 'Unable to get your current location.');
+    }
+  };
+
+  const handleDelete = (device: DeviceSummary) => {
+    Alert.alert(
+      'Delete Device',
+      `Delete ${device.station_id || device.mac_address}? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setActionDeviceId(device.id);
+              await deviceService.deleteDevice(device.id);
+              setDevices((current) => current.filter((item) => item.id !== device.id));
+            } catch (error) {
+              console.error('Delete failed:', error);
+              Alert.alert('Delete failed', 'Could not remove this device.');
+            } finally {
+              setActionDeviceId(null);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const getMapSensors = (device: DeviceSummary) => {
@@ -140,6 +179,27 @@ const DevicePairingScreen = () => {
                 <Text className="text-xs uppercase tracking-wide text-waterbase-500 mb-1">Awaiting pair</Text>
                 <Text className="text-2xl font-bold text-enviro-700">{discoveredCount}</Text>
               </View>
+            </View>
+
+            <View className="flex-row gap-2 mb-4">
+              {[
+                { key: 'all', label: 'All' },
+                { key: 'discovered', label: 'Discovered' },
+                { key: 'paired', label: 'Paired' },
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.key}
+                  className={`flex-1 rounded-xl px-3 py-2 items-center ${filter === item.key ? 'bg-waterbase-600' : 'bg-white border border-waterbase-200'}`}
+                  onPress={() => {
+                    setFilter(item.key as 'all' | 'discovered' | 'paired');
+                    setPage(1);
+                  }}
+                >
+                  <Text className={`text-sm font-semibold ${filter === item.key ? 'text-white' : 'text-waterbase-700'}`}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
             <Card className="border-waterbase-200 mb-4">
@@ -206,6 +266,19 @@ const DevicePairingScreen = () => {
                           </View>
                         </View>
 
+                        {device.status === 'awaiting_pair' && (
+                          <View className="mb-3">
+                            <Text className="text-xs text-waterbase-500 mb-1">Device Name (Optional)</Text>
+                            <TextInput
+                              className="rounded-xl border border-waterbase-200 bg-waterbase-50 px-3 py-3 text-waterbase-950"
+                              placeholder="River Monitoring Station Alpha"
+                              placeholderTextColor="#94A3B8"
+                              value={deviceNames[device.id] ?? device.name ?? ''}
+                              onChangeText={(value) => setDeviceNames((current) => ({ ...current, [device.id]: value }))}
+                            />
+                          </View>
+                        )}
+
                         {/* Map picker for location */}
                         {device.status === 'awaiting_pair' && (
                           <View className="mb-3">
@@ -219,8 +292,19 @@ const DevicePairingScreen = () => {
                                 sensors={mapSensors as any}
                                 showSensors={true}
                                 onSensorPress={() => {}}
+                                onMapPress={(coordinate) => {
+                                  setSelectedLocations((current) => ({
+                                    ...current,
+                                    [device.id]: coordinate,
+                                  }));
+                                }}
                               />
                             </View>
+                            {hasLocation && (
+                              <Text className="text-xs text-waterbase-500 mt-2">
+                                Lat: {selectedLocations[device.id].latitude.toFixed(5)}, Lng: {selectedLocations[device.id].longitude.toFixed(5)}
+                              </Text>
+                            )}
                             <View className="flex-row gap-2 mt-2">
                               <TouchableOpacity
                                 className="flex-1 items-center justify-center rounded-xl bg-waterbase-100 px-3 py-2"
@@ -235,27 +319,33 @@ const DevicePairingScreen = () => {
                               </TouchableOpacity>
                               <TouchableOpacity
                                 className="flex-1 items-center justify-center rounded-xl bg-waterbase-100 px-3 py-2"
-                                onPress={() => {
-                                  // In a real implementation, this would use expo-location
-                                  setSelectedLocations((current) => ({
-                                    ...current,
-                                    [device.id]: { latitude: 14.5995 + (Math.random() - 0.5) * 0.1, longitude: 120.9842 + (Math.random() - 0.5) * 0.1 },
-                                  }));
-                                }}
+                                onPress={() => handleUseCurrentLocation(device.id)}
                               >
-                                <Text className="text-xs text-waterbase-700 font-semibold">Pick Random Nearby</Text>
+                                <Text className="text-xs text-waterbase-700 font-semibold">Use Current Location</Text>
                               </TouchableOpacity>
                             </View>
                           </View>
                         )}
 
                         <View className="flex-row gap-2">
-                          <TouchableOpacity
-                            className="flex-1 items-center justify-center rounded-xl bg-waterbase-600 px-4 py-3"
-                            onPress={() => handlePair(device)}
-                          >
-                            <Text className="text-white font-semibold">Pair device</Text>
-                          </TouchableOpacity>
+                          {device.status === 'awaiting_pair' ? (
+                            <TouchableOpacity
+                              className="flex-1 items-center justify-center rounded-xl bg-waterbase-600 px-4 py-3"
+                              onPress={() => handlePair(device)}
+                              disabled={actionDeviceId === device.id}
+                            >
+                              <Text className="text-white font-semibold">
+                                {actionDeviceId === device.id ? 'Working...' : 'Pair device'}
+                              </Text>
+                            </TouchableOpacity>
+                          ) : (
+                            <TouchableOpacity
+                              className="flex-1 items-center justify-center rounded-xl bg-waterbase-600 px-4 py-3"
+                              onPress={() => navigation.navigate('DeviceDetail', { deviceId: device.id })}
+                            >
+                              <Text className="text-white font-semibold">View</Text>
+                            </TouchableOpacity>
+                          )}
 
                           <TouchableOpacity
                             className="items-center justify-center rounded-xl border border-waterbase-200 px-4 py-3"
@@ -276,10 +366,37 @@ const DevicePairingScreen = () => {
                           >
                             <Text className="text-waterbase-700 font-semibold">Latest</Text>
                           </TouchableOpacity>
+
+                          <TouchableOpacity
+                            className="items-center justify-center rounded-xl bg-red-50 border border-red-200 px-4 py-3"
+                            onPress={() => handleDelete(device)}
+                            disabled={actionDeviceId === device.id}
+                          >
+                            <Text className="text-red-700 font-semibold">Delete</Text>
+                          </TouchableOpacity>
                         </View>
                       </View>
                     );
                   })
+                )}
+                {totalPages > 1 && (
+                  <View className="flex-row justify-center items-center gap-3 mt-2">
+                    <TouchableOpacity
+                      disabled={page <= 1 || isLoading}
+                      onPress={() => setPage((current) => Math.max(1, current - 1))}
+                      className="px-3 py-2 rounded-lg bg-waterbase-100"
+                    >
+                      <Text className="text-waterbase-700">Prev</Text>
+                    </TouchableOpacity>
+                    <Text className="text-sm text-waterbase-600">{page} / {totalPages}</Text>
+                    <TouchableOpacity
+                      disabled={page >= totalPages || isLoading}
+                      onPress={() => setPage((current) => Math.min(totalPages, current + 1))}
+                      className="px-3 py-2 rounded-lg bg-waterbase-100"
+                    >
+                      <Text className="text-waterbase-700">Next</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
               </CardContent>
             </Card>

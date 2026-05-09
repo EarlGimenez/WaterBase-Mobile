@@ -20,6 +20,10 @@ const API_CONFIG = {
 export const API_ENDPOINTS = {
   LOGIN: `${API_CONFIG.BASE_URL}/login`,
   REGISTER: `${API_CONFIG.BASE_URL}/register`,
+  FORGOT_PASSWORD: `${API_CONFIG.BASE_URL}/forgot-password`,
+  RESET_PASSWORD: `${API_CONFIG.BASE_URL}/reset-password`,
+  GOOGLE_MOBILE: `${API_CONFIG.BASE_URL}/auth/google/mobile`,
+  COMPLETE_PROFILE: `${API_CONFIG.BASE_URL}/auth/complete-profile`,
   LOGOUT: `${API_CONFIG.BASE_URL}/logout`,
   USER_PROFILE: `${API_CONFIG.BASE_URL}/user/profile`,
   USER_PUSH_TOKEN: `${API_CONFIG.BASE_URL}/user/push-token`,

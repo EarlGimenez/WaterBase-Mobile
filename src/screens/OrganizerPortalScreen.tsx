@@ -122,7 +122,7 @@ const OrganizerPortalScreen = () => {
 
   const wbsiCalculator = new WBSICalculator();
 
-  const isOrganizerRole = ['ngo', 'lgu', 'researcher'].includes((user?.role || '').toLowerCase());
+  const isOrganizerRole = ['ngo', 'lgu'].includes((user?.role || '').toLowerCase());
 
   // Combined data loading function to reduce API spam
   const loadAllData = useCallback(async () => {
@@ -657,8 +657,12 @@ const OrganizerPortalScreen = () => {
     { key: 'areas', label: 'Reports', icon: 'map' },
     { key: 'events', label: 'My Events', icon: 'calendar' },
     { key: 'volunteers', label: 'Volunteers', icon: 'people' },
-    { key: 'members', label: 'Members', icon: 'people-circle' },
-    { key: 'organization', label: 'Controls', icon: 'business' },
+    ...(isOrganizerRole
+      ? [
+          { key: 'members', label: 'Members', icon: 'people-circle' },
+          { key: 'organization', label: 'Controls', icon: 'business' },
+        ]
+      : []),
   ];
 
   const renderTabContent = () => {

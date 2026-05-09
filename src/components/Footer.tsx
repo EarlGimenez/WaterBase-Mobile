@@ -105,7 +105,7 @@ const Footer: React.FC = () => {
 
   const role = (user?.role || '').toLowerCase();
   const isAdmin = role === 'admin';
-  const isOrganizer = role === 'ngo' || role === 'lgu' || role === 'researcher';
+  const isOrganizer = role === 'ngo' || role === 'lgu';
 
   const baseButtons = [
     ...(isAuthenticated && !isGuest ? [] : [{

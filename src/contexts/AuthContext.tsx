@@ -11,7 +11,11 @@ export interface User {
   role: 'volunteer' | 'ngo' | 'lgu' | 'admin' | 'researcher';
   organization?: string;
   areaOfResponsibility?: string;
+  phoneNumber?: string;
   profile_photo?: string;
+  avatar?: string;
+  profile_completed?: boolean;
+  profile_completed_at?: string | null;
   createdAt?: string;
 }
 
