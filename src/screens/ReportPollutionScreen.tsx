@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ScrollView,
   View,
@@ -10,8 +10,9 @@ import {
   Modal,
   ActivityIndicator,
   FlatList,
+  StyleSheet,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from 'expo-image-picker';
@@ -41,7 +42,7 @@ import {
 
 const ReportPollutionScreen = () => {
   const navigation = useNavigation();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { showLoading, showProcessing, showSuccess, showError, hideFeedback } = useFeedback();
   
   // Form state
@@ -70,6 +71,7 @@ const ReportPollutionScreen = () => {
   const [reportMode, setReportMode] = useState<'ai' | 'manual'>('ai');
   const [csvFile, setCsvFile] = useState<any>(null);
   const [csvUploading, setCsvUploading] = useState(false);
+  const [mobileGallerySubmissionEnabled, setMobileGallerySubmissionEnabled] = useState(true);
   const [csvResult, setCsvResult] = useState<{
     imported: number;
     errors: Array<{ row: number; field: string; message: string }>;
@@ -78,6 +80,33 @@ const ReportPollutionScreen = () => {
   } | null>(null);
 
   const showManualOption = ['ngo', 'lgu', 'admin'].includes(user?.role || '');
+
+  const fetchMobileGallerySetting = useCallback(async () => {
+    if (!token) {
+      setMobileGallerySubmissionEnabled(true);
+      return;
+    }
+
+    try {
+      const response = await apiRequest(API_ENDPOINTS.ADMIN_SYSTEM_SETTINGS, { method: 'GET' });
+      const data = await response.json();
+
+      setMobileGallerySubmissionEnabled(Boolean(data.mobile_gallery_submission_enabled ?? true));
+    } catch (error) {
+      console.error('Error fetching mobile gallery setting:', error);
+      setMobileGallerySubmissionEnabled(true);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    fetchMobileGallerySetting();
+  }, [fetchMobileGallerySetting]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchMobileGallerySetting();
+    }, [fetchMobileGallerySetting])
+  );
 
   const extractErrorMessage = (raw: string) => {
     try {
@@ -696,14 +725,11 @@ const ReportPollutionScreen = () => {
       <SafeAreaView className="flex-1 bg-gradient-to-br from-waterbase-50 to-enviro-50">
       <Navigation title="Report Pollution" showBackButton={true} />
 
-      <ScrollView className="flex-1 px-4 py-2" showsVerticalScrollIndicator={false}>
-        <View className="py-4">
+      <ScrollView className="flex-1 px-4 pt-2" showsVerticalScrollIndicator={false}>
+        <View className="pt-2 pb-4">
           <Card className="border-waterbase-200">
-            <CardHeader>
-              <View className="items-center mb-4">
-                <View className="w-16 h-16 bg-gradient-to-br from-waterbase-500 to-enviro-500 rounded-full items-center justify-center mb-3">
-                  <Ionicons name="camera" size={32} color="white" />
-                </View>
+            <CardHeader className="pt-4 pb-1">
+              <View className="items-center">
                 <CardTitle className="text-xl text-waterbase-950 text-center">
                   Report Water Pollution
                 </CardTitle>
@@ -714,7 +740,7 @@ const ReportPollutionScreen = () => {
               </View>
             </CardHeader>
 
-            <CardContent>
+            <CardContent className="pt-2">
               {showManualOption && (
                 <View className="flex-row bg-gray-100 rounded-lg mb-4 overflow-hidden">
                   <TouchableOpacity
@@ -869,7 +895,10 @@ const ReportPollutionScreen = () => {
                       
                       {/* AI Status Indicator */}
                       {aiScanStatus === 'scanning' && (
-                        <View className="absolute inset-0 bg-black/50 rounded-lg justify-center items-center">
+                        <View
+                          className="absolute bg-black/50 rounded-lg justify-center items-center"
+                          style={StyleSheet.absoluteFillObject}
+                        >
                           <ActivityIndicator size="large" color="#ffffff" />
                           <Text className="text-white mt-2">AI Analyzing...</Text>
                         </View>
@@ -919,31 +948,33 @@ const ReportPollutionScreen = () => {
                         </Text>
                       </TouchableOpacity>
 
-                      <TouchableOpacity
-                        className="border-2 border-dashed border-gray-300 rounded-lg p-6 items-center bg-gray-50"
-                        onPress={async () => {
-                          console.log('Gallery button pressed');
-                          try {
-                            const hasPermissions = await requestPermissions();
-                            console.log('Permissions result:', hasPermissions);
-                            if (hasPermissions) {
-                              console.log('Opening gallery...');
-                              await openGallery();
+                      {mobileGallerySubmissionEnabled && (
+                        <TouchableOpacity
+                          className="border-2 border-dashed border-gray-300 rounded-lg p-6 items-center bg-gray-50"
+                          onPress={async () => {
+                            console.log('Gallery button pressed');
+                            try {
+                              const hasPermissions = await requestPermissions();
+                              console.log('Permissions result:', hasPermissions);
+                              if (hasPermissions) {
+                                console.log('Opening gallery...');
+                                await openGallery();
+                              }
+                            } catch (error) {
+                              console.error('Error opening gallery:', error);
+                              Alert.alert('Error', 'Failed to open gallery. Please try again.');
                             }
-                          } catch (error) {
-                            console.error('Error opening gallery:', error);
-                            Alert.alert('Error', 'Failed to open gallery. Please try again.');
-                          }
-                        }}
-                      >
-                        <Ionicons name="images" size={28} color="#9CA3AF" />
-                        <Text className="text-gray-500 mt-2 text-center font-medium">
-                          Choose from Gallery
-                        </Text>
-                        <Text className="text-xs text-gray-400 mt-1 text-center">
-                          Select existing photo
-                        </Text>
-                      </TouchableOpacity>
+                          }}
+                        >
+                          <Ionicons name="images" size={28} color="#9CA3AF" />
+                          <Text className="text-gray-500 mt-2 text-center font-medium">
+                            Choose from Gallery
+                          </Text>
+                          <Text className="text-xs text-gray-400 mt-1 text-center">
+                            Select existing photo
+                          </Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   )}
                 </View>
