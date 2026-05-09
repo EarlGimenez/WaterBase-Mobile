@@ -1382,7 +1382,7 @@ const OrganizerPortalScreen = () => {
               </View>
 
               <Text className="text-xs text-gray-600 text-center mb-4">
-                Ask volunteers to open the WaterBase app and scan this QR code to mark their attendance.
+                Ask volunteers to open the WaterbasePH app and scan this QR code to mark their attendance.
               </Text>
 
               <Button

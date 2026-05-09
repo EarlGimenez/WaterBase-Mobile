@@ -12,6 +12,7 @@ import {
   CardDescription,
 } from "../components/ui/Card";
 import Navigation from "../components/Navigation";
+import { BrandWordmark } from "../components/BrandWordmark";
 
 const HomeScreen = () => {
   const navigation = useNavigation();
@@ -83,7 +84,7 @@ const HomeScreen = () => {
             </Text>
 
             <Text className="text-lg text-waterbase-700 mb-6 text-center">
-              WaterBase empowers communities to monitor and report water
+              WaterbasePH empowers communities to monitor and report water
               pollution through AI-powered verification.
             </Text>
 
@@ -205,7 +206,7 @@ const HomeScreen = () => {
             </Text>
             <Text className="text-white mb-6 text-center opacity-90">
               Whether you're a concerned citizen, environmental organization, or
-              government agency, WaterBase provides the tools you need.
+              government agency, WaterbasePH provides the tools you need.
             </Text>
             <View className="w-full px-4">
               <TouchableOpacity
@@ -238,7 +239,7 @@ const HomeScreen = () => {
               >
                 <Ionicons name="location" size={20} color="white" />
               </LinearGradient>
-              <Text className="text-xl font-bold text-white flex-shrink" numberOfLines={1}>WaterBase</Text>
+              <BrandWordmark className="text-xl flex-shrink" light />
             </View>
             <Text className="text-waterbase-300 text-center text-sm">
               Transforming water protection through community engagement, AI
@@ -248,7 +249,7 @@ const HomeScreen = () => {
 
           <View className="border-t border-waterbase-800 pt-4">
             <Text className="text-waterbase-400 text-center text-sm">
-              © 2024 WaterBase. Environmental protection through technology and
+              © 2024 WaterbasePH. Environmental protection through technology and
               community.
             </Text>
           </View>

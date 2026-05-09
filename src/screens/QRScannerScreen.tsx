@@ -76,7 +76,7 @@ const QRScannerScreen = () => {
 
     const match = data.match(/waterbase:\/\/event\/(\d+)\/attend/);
     if (!match) {
-      Alert.alert("Invalid QR Code", "This QR code is not a valid WaterBase event code.");
+      Alert.alert("Invalid QR Code", "This QR code is not a valid WaterbasePH event code.");
       return;
     }
 

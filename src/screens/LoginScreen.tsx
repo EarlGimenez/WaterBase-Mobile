@@ -183,7 +183,7 @@ const LoginScreen = () => {
                 Welcome Back
               </CardTitle>
               <CardDescription className="text-waterbase-600 text-center">
-                Sign in to your WaterBase account to continue monitoring and reporting water pollution
+                Sign in to your WaterbasePH account to continue monitoring and reporting water pollution
               </CardDescription>
             </CardHeader>
 

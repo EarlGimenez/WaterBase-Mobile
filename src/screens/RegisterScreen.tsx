@@ -211,7 +211,7 @@ const RegisterScreen = () => {
                 <Ionicons name="person-add" size={32} color="white" />
               </LinearGradient>
               <CardTitle className="text-2xl text-center text-waterbase-950 mb-2">
-                Join WaterBase
+                Join WaterbasePH
               </CardTitle>
               <Text className="text-center text-waterbase-600 px-4 leading-relaxed">
                 Create your account to start reporting pollution, participate in cleanups, and help protect our water resources

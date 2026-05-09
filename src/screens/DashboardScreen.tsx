@@ -135,7 +135,7 @@ const DashboardScreen = () => {
       return [
         {
           project: "Loading cleanup data",
-          organization: "WaterBase",
+          organization: "WaterbasePH",
           progress: 35,
           status: "Loading",
         },

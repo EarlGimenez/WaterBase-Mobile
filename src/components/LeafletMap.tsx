@@ -67,7 +67,7 @@ const LeafletMap: React.FC<LeafletMapProps> = ({
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>WaterBase Map</title>
+        <title>WaterbasePH Map</title>
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
         <style>
             body { margin: 0; padding: 0; }

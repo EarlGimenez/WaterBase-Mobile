@@ -53,7 +53,7 @@ const CompleteProfileScreen = () => {
             <CardHeader className="items-center">
               <CardTitle className="text-2xl text-waterbase-950 text-center">Complete Your Profile</CardTitle>
               <CardDescription className="text-waterbase-600 text-center">
-                Add your phone number to finish setting up your WaterBase account.
+                Add your phone number to finish setting up your WaterbasePH account.
               </CardDescription>
             </CardHeader>
             <CardContent>

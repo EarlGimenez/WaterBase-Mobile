@@ -92,7 +92,7 @@ const Footer: React.FC = () => {
   const handleSignupNavigation = () => {
     Alert.alert(
       "Create Account",
-      "Join WaterBase to report pollution, participate in cleanups, and help protect our water resources.",
+      "Join WaterbasePH to report pollution, participate in cleanups, and help protect our water resources.",
       [
         { text: "Cancel", style: "cancel" },
         {

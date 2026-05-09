@@ -6,6 +6,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "../contexts/AuthContext";
 import { clearNotificationCache, fetchUnreadCount } from "../services/notifications";
 import { resolveProfilePhotoUri } from "../utils/imageUrl";
+import { BrandWordmark } from "./BrandWordmark";
 
 interface NavigationProps {
   title?: string;
@@ -14,7 +15,7 @@ interface NavigationProps {
 }
 
 export const Navigation: React.FC<NavigationProps> = ({
-  title = "WaterBase",
+  title = "WaterbasePH",
   showBackButton = false,
   rightActions,
 }) => {
@@ -115,9 +116,13 @@ export const Navigation: React.FC<NavigationProps> = ({
             >
               <Ionicons name="location" size={20} color="white" />
             </LinearGradient>
-            <Text className="text-xl font-bold text-waterbase-950 flex-shrink" numberOfLines={1}>
-              {title}
-            </Text>
+            {title === "WaterbasePH" ? (
+              <BrandWordmark className="flex-shrink" />
+            ) : (
+              <Text className="text-xl font-bold text-waterbase-950 flex-shrink" numberOfLines={1}>
+                {title}
+              </Text>
+            )}
           </View>
         </View>
 

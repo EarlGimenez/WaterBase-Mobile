@@ -97,7 +97,7 @@ const HowItWorksScreen = () => {
                   Protect Our Waters
                 </CardTitle>
                 <Text className="text-waterbase-600 text-center text-base mt-2">
-                  Learn how WaterBase helps you report pollution and protect water sources in your community
+                  Learn how WaterbasePH helps you report pollution and protect water sources in your community
                 </Text>
               </View>
             </CardHeader>
