@@ -106,6 +106,20 @@ const getPollutionTypeColor = (type: string) => {
   return colors[type.toLowerCase()] || '#6b7280';
 };
 
+const toFiniteNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+};
+
+const formatTelemetryNumber = (value: unknown, digits: number): string => {
+  const numberValue = toFiniteNumber(value);
+  return numberValue === null ? "--" : numberValue.toFixed(digits);
+};
+
 // Custom hook for fetching reports
 const useReportsData = () => {
   const { token } = useAuth();
@@ -163,6 +177,9 @@ const useReportsData = () => {
 
 const MapViewScreen = () => {
   const { user, token } = useAuth();
+  const role = (user?.role || "").toLowerCase();
+  const canAccessResearch = ["researcher", "ngo", "lgu", "admin"].includes(role);
+
   if (!token) {
     return (
       <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center">
@@ -276,10 +293,21 @@ const MapViewScreen = () => {
     animateBottomSheet(BOTTOM_SHEET_MIN_HEIGHT, false);
   };
 
+  useEffect(() => {
+    if (!canAccessResearch && viewMode === "research") {
+      setViewMode("reports");
+      setSelectedSensor(null);
+      setResearchDocuments([]);
+    }
+  }, [canAccessResearch, viewMode]);
+
   // Fetch real sensors
   useEffect(() => {
     const fetchSensors = async () => {
-      if (!token) return;
+      if (!token || !canAccessResearch) {
+        setSensors([]);
+        return;
+      }
       try {
         const data = await deviceService.getMapSensors();
         setSensors(data);
@@ -288,7 +316,7 @@ const MapViewScreen = () => {
       }
     };
     fetchSensors();
-  }, [token]);
+  }, [token, canAccessResearch]);
 
   // Filter reports based on current filters
   useEffect(() => {
@@ -340,7 +368,10 @@ const MapViewScreen = () => {
   // Fetch research documents
   useEffect(() => {
     const fetchDocs = async () => {
-      if (!token) return;
+      if (!token || !canAccessResearch || viewMode !== "research") {
+        setResearchDocuments([]);
+        return;
+      }
       try {
         const response = await apiRequest(API_ENDPOINTS.RESEARCH_DOCUMENTS, {
           method: 'GET',
@@ -354,7 +385,7 @@ const MapViewScreen = () => {
       }
     };
     fetchDocs();
-  }, [viewMode, token]);
+  }, [viewMode, token, canAccessResearch]);
 
   // Calculate distribution data for charts
   const getDistributionData = (): DistributionData[] => {
@@ -431,20 +462,26 @@ const MapViewScreen = () => {
           style={{ flex: 1 }}
           center={currentLocation}
           reports={filteredReports}
-          sensors={sensors.map(s => ({
-            id: String(s.id),
-            name: s.name || s.station_id || 'Sensor',
-            latitude: s.latitude,
-            longitude: s.longitude,
-            waterQualityIndex: s.latest_telemetry?.ph ? Math.round(Number(s.latest_telemetry.ph) * 10) : 70,
-          }))}
+          sensors={sensors.map(s => {
+            const ph = toFiniteNumber(s.latest_telemetry?.ph);
+            return {
+              id: String(s.id),
+              name: s.name || s.station_id || 'Sensor',
+              latitude: s.latitude,
+              longitude: s.longitude,
+              waterQualityIndex: ph !== null ? Math.round(ph * 10) : 70,
+            };
+          })}
           showReports={viewMode === "reports" && showLayers.pollution}
-          showSensors={viewMode === "research" || showLayers.sensors}
+          showSensors={canAccessResearch && (viewMode === "research" || showLayers.sensors)}
           onReportPress={(report) => {
             setSelectedReport(report as any);
             // Removed expandBottomSheet() since map pin popup already shows info
           }}
           onSensorPress={(sensor) => {
+            if (!canAccessResearch) {
+              return;
+            }
             const realSensor = sensors.find(s => String(s.id) === sensor.id);
             if (realSensor) {
               setSelectedSensor(realSensor);
@@ -490,24 +527,26 @@ const MapViewScreen = () => {
               {/* Controls Section - Always Visible */}
               <View className="mb-4">
                 {/* Mode Toggle */}
-                <View className="flex-row bg-gray-100 rounded-lg mb-4 overflow-hidden">
-                  <TouchableOpacity
-                    className={`flex-1 py-3 px-4 ${viewMode === "reports" ? "bg-waterbase-500" : "bg-transparent"}`}
-                    onPress={() => setViewMode("reports")}
-                  >
-                    <Text className={`text-center text-sm font-medium ${viewMode === "reports" ? "text-white" : "text-gray-700"}`}>
-                      Reports
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    className={`flex-1 py-3 px-4 ${viewMode === "research" ? "bg-waterbase-500" : "bg-transparent"}`}
-                    onPress={() => setViewMode("research")}
-                  >
-                    <Text className={`text-center text-sm font-medium ${viewMode === "research" ? "text-white" : "text-gray-700"}`}>
-                      Research
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+                {canAccessResearch && (
+                  <View className="flex-row bg-gray-100 rounded-lg mb-4 overflow-hidden">
+                    <TouchableOpacity
+                      className={`flex-1 py-3 px-4 ${viewMode === "reports" ? "bg-waterbase-500" : "bg-transparent"}`}
+                      onPress={() => setViewMode("reports")}
+                    >
+                      <Text className={`text-center text-sm font-medium ${viewMode === "reports" ? "text-white" : "text-gray-700"}`}>
+                        Reports
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      className={`flex-1 py-3 px-4 ${viewMode === "research" ? "bg-waterbase-500" : "bg-transparent"}`}
+                      onPress={() => setViewMode("research")}
+                    >
+                      <Text className={`text-center text-sm font-medium ${viewMode === "research" ? "text-white" : "text-gray-700"}`}>
+                        Research
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
 
                 {/* Search Bar */}
                 <View className="relative mb-4">
@@ -593,13 +632,15 @@ const MapViewScreen = () => {
                           onValueChange={(value) => setShowLayers(prev => ({ ...prev, pollution: value }))}
                         />
                       </View>
-                      <View className="flex-row items-center justify-between">
-                        <Text className="text-sm text-gray-600">Show Sensor Stations</Text>
-                        <Switch
-                          value={showLayers.sensors}
-                          onValueChange={(value) => setShowLayers(prev => ({ ...prev, sensors: value }))}
-                        />
-                      </View>
+                      {canAccessResearch && (
+                        <View className="flex-row items-center justify-between">
+                          <Text className="text-sm text-gray-600">Show Sensor Stations</Text>
+                          <Switch
+                            value={showLayers.sensors}
+                            onValueChange={(value) => setShowLayers(prev => ({ ...prev, sensors: value }))}
+                          />
+                        </View>
+                      )}
                     </View>
                   </View>
                 </CardContent>
@@ -727,16 +768,16 @@ const MapViewScreen = () => {
                           <CardContent>
                             <View className="space-y-2">
                               {selectedSensor.latest_telemetry?.ph !== null && selectedSensor.latest_telemetry?.ph !== undefined && (
-                                <Text className="text-sm text-gray-600">🧪 pH: {Number(selectedSensor.latest_telemetry.ph).toFixed(2)}</Text>
+                                <Text className="text-sm text-gray-600">pH: {formatTelemetryNumber(selectedSensor.latest_telemetry.ph, 2)}</Text>
                               )}
                               {selectedSensor.latest_telemetry?.temperature_celsius !== null && selectedSensor.latest_telemetry?.temperature_celsius !== undefined && (
-                                <Text className="text-sm text-gray-600">🌡️ Temperature: {Number(selectedSensor.latest_telemetry.temperature_celsius).toFixed(1)}°C</Text>
+                                <Text className="text-sm text-gray-600">Temperature: {formatTelemetryNumber(selectedSensor.latest_telemetry.temperature_celsius, 1)} C</Text>
                               )}
                               {selectedSensor.latest_telemetry?.tds_mg_l !== null && selectedSensor.latest_telemetry?.tds_mg_l !== undefined && (
-                                <Text className="text-sm text-gray-600">⚗️ TDS: {Number(selectedSensor.latest_telemetry.tds_mg_l).toFixed(0)} mg/L</Text>
+                                <Text className="text-sm text-gray-600">TDS: {formatTelemetryNumber(selectedSensor.latest_telemetry.tds_mg_l, 0)} mg/L</Text>
                               )}
                               {selectedSensor.latest_telemetry?.turbidity_ntu !== null && selectedSensor.latest_telemetry?.turbidity_ntu !== undefined && (
-                                <Text className="text-sm text-gray-600">🔍 Turbidity: {Number(selectedSensor.latest_telemetry.turbidity_ntu).toFixed(1)} NTU</Text>
+                                <Text className="text-sm text-gray-600">Turbidity: {formatTelemetryNumber(selectedSensor.latest_telemetry.turbidity_ntu, 1)} NTU</Text>
                               )}
                             </View>
                             <Text className="text-xs text-gray-500 mt-3">
@@ -760,12 +801,12 @@ const MapViewScreen = () => {
                                       <View className="flex-1">
                                         <Text className="font-medium text-gray-800">{item.name || item.station_id || 'Sensor'}</Text>
                                         <Text className="text-sm text-gray-600 mt-1">
-                                          pH: {item.latest_telemetry?.ph?.toFixed(2) ?? '--'}
+                                          pH: {formatTelemetryNumber(item.latest_telemetry?.ph, 2)}
                                         </Text>
                                       </View>
                                       <View 
                                         className="w-8 h-8 rounded-full items-center justify-center"
-                                        style={{ backgroundColor: item.latest_telemetry?.ph ? '#0ea5e9' : '#9CA3AF' }}
+                                        style={{ backgroundColor: toFiniteNumber(item.latest_telemetry?.ph) !== null ? '#0ea5e9' : '#9CA3AF' }}
                                       >
                                         <Ionicons name="hardware-chip-outline" size={14} color="white" />
                                       </View>

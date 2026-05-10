@@ -237,7 +237,26 @@ const AdminModerationScreen: React.FC = () => {
   // Settings
   const [autoApproveEnabled, setAutoApproveEnabled] = useState(false);
   const [autoApproveThreshold, setAutoApproveThreshold] = useState(80);
+  const [csvAutoApproveEnabled, setCsvAutoApproveEnabled] = useState(false);
+  const [mobileGallerySubmissionEnabled, setMobileGallerySubmissionEnabled] = useState(true);
   const [performanceMetricsEnabled, setPerformanceMetricsEnabled] = useState(false);
+  const [wbsiNamedWaterBodySegmentRadiusM, setWbsiNamedWaterBodySegmentRadiusM] = useState(500);
+  const [wbsiUngroupedProximityRadiusM, setWbsiUngroupedProximityRadiusM] = useState(150);
+  const [wbsiSensorAssignmentRadiusM, setWbsiSensorAssignmentRadiusM] = useState(1000);
+  const [wbsiSensorWeight, setWbsiSensorWeight] = useState(0.6);
+  const [wbsiReportWeight, setWbsiReportWeight] = useState(0.4);
+  const [wbsiFreshwaterPhMin, setWbsiFreshwaterPhMin] = useState(6.5);
+  const [wbsiFreshwaterPhMax, setWbsiFreshwaterPhMax] = useState(8.5);
+  const [wbsiFreshwaterTurbidityNtu, setWbsiFreshwaterTurbidityNtu] = useState(5);
+  const [wbsiFreshwaterTdsMgL, setWbsiFreshwaterTdsMgL] = useState(500);
+  const [wbsiFreshwaterTemperatureMinCelsius, setWbsiFreshwaterTemperatureMinCelsius] = useState(24);
+  const [wbsiFreshwaterTemperatureMaxCelsius, setWbsiFreshwaterTemperatureMaxCelsius] = useState(32);
+  const [wbsiMarinePhMin, setWbsiMarinePhMin] = useState(7.5);
+  const [wbsiMarinePhMax, setWbsiMarinePhMax] = useState(8.5);
+  const [wbsiMarineTurbidityNtu, setWbsiMarineTurbidityNtu] = useState(5);
+  const [wbsiMarineTdsMgL, setWbsiMarineTdsMgL] = useState(35000);
+  const [wbsiMarineTemperatureMinCelsius, setWbsiMarineTemperatureMinCelsius] = useState(24);
+  const [wbsiMarineTemperatureMaxCelsius, setWbsiMarineTemperatureMaxCelsius] = useState(32);
   const [maintenanceHealth, setMaintenanceHealth] = useState<any>(null);
   const [maintenanceStats, setMaintenanceStats] = useState<any>(null);
   const [isMaintenanceBusy, setIsMaintenanceBusy] = useState(false);
@@ -346,7 +365,26 @@ const AdminModerationScreen: React.FC = () => {
         const data = await res.json();
         setAutoApproveEnabled(Boolean(data.auto_approve_enabled));
         setAutoApproveThreshold(Number(data.auto_approve_threshold));
+        setCsvAutoApproveEnabled(Boolean(data.csv_auto_approve_enabled));
+        setMobileGallerySubmissionEnabled(data.mobile_gallery_submission_enabled !== false);
         setPerformanceMetricsEnabled(Boolean(data.performance_metrics_enabled));
+        setWbsiNamedWaterBodySegmentRadiusM(Number(data.wbsi_named_water_body_segment_radius_m ?? 500));
+        setWbsiUngroupedProximityRadiusM(Number(data.wbsi_ungrouped_proximity_radius_m ?? 150));
+        setWbsiSensorAssignmentRadiusM(Number(data.wbsi_sensor_assignment_radius_m ?? 1000));
+        setWbsiSensorWeight(Number(data.wbsi_sensor_weight ?? 0.6));
+        setWbsiReportWeight(Number(data.wbsi_report_weight ?? 0.4));
+        setWbsiFreshwaterPhMin(Number(data.wbsi_freshwater_ph_min ?? 6.5));
+        setWbsiFreshwaterPhMax(Number(data.wbsi_freshwater_ph_max ?? 8.5));
+        setWbsiFreshwaterTurbidityNtu(Number(data.wbsi_freshwater_turbidity_ntu ?? 5));
+        setWbsiFreshwaterTdsMgL(Number(data.wbsi_freshwater_tds_mg_l ?? 500));
+        setWbsiFreshwaterTemperatureMinCelsius(Number(data.wbsi_freshwater_temperature_min_celsius ?? 24));
+        setWbsiFreshwaterTemperatureMaxCelsius(Number(data.wbsi_freshwater_temperature_max_celsius ?? 32));
+        setWbsiMarinePhMin(Number(data.wbsi_marine_ph_min ?? 7.5));
+        setWbsiMarinePhMax(Number(data.wbsi_marine_ph_max ?? 8.5));
+        setWbsiMarineTurbidityNtu(Number(data.wbsi_marine_turbidity_ntu ?? 5));
+        setWbsiMarineTdsMgL(Number(data.wbsi_marine_tds_mg_l ?? 35000));
+        setWbsiMarineTemperatureMinCelsius(Number(data.wbsi_marine_temperature_min_celsius ?? 24));
+        setWbsiMarineTemperatureMaxCelsius(Number(data.wbsi_marine_temperature_max_celsius ?? 32));
       }
     } catch (e) {
       console.error("Error fetching settings:", e);
@@ -476,20 +514,45 @@ const AdminModerationScreen: React.FC = () => {
   };
 
   const handleSaveSettings = async () => {
+    if (Math.abs((Number(wbsiSensorWeight) + Number(wbsiReportWeight)) - 1) > 0.001) {
+      showMessage("WBSI sensor and report weights must total 1.00", true);
+      return;
+    }
+
     try {
       const res = await apiRequest(API_ENDPOINTS.ADMIN_SYSTEM_SETTINGS, {
         method: "PUT",
         body: JSON.stringify({
           auto_approve_enabled: autoApproveEnabled,
           auto_approve_threshold: autoApproveThreshold,
+          csv_auto_approve_enabled: csvAutoApproveEnabled,
+          mobile_gallery_submission_enabled: mobileGallerySubmissionEnabled,
           performance_metrics_enabled: performanceMetricsEnabled,
+          wbsi_named_water_body_segment_radius_m: wbsiNamedWaterBodySegmentRadiusM,
+          wbsi_ungrouped_proximity_radius_m: wbsiUngroupedProximityRadiusM,
+          wbsi_sensor_assignment_radius_m: wbsiSensorAssignmentRadiusM,
+          wbsi_sensor_weight: wbsiSensorWeight,
+          wbsi_report_weight: wbsiReportWeight,
+          wbsi_freshwater_ph_min: wbsiFreshwaterPhMin,
+          wbsi_freshwater_ph_max: wbsiFreshwaterPhMax,
+          wbsi_freshwater_turbidity_ntu: wbsiFreshwaterTurbidityNtu,
+          wbsi_freshwater_tds_mg_l: wbsiFreshwaterTdsMgL,
+          wbsi_freshwater_temperature_min_celsius: wbsiFreshwaterTemperatureMinCelsius,
+          wbsi_freshwater_temperature_max_celsius: wbsiFreshwaterTemperatureMaxCelsius,
+          wbsi_marine_ph_min: wbsiMarinePhMin,
+          wbsi_marine_ph_max: wbsiMarinePhMax,
+          wbsi_marine_turbidity_ntu: wbsiMarineTurbidityNtu,
+          wbsi_marine_tds_mg_l: wbsiMarineTdsMgL,
+          wbsi_marine_temperature_min_celsius: wbsiMarineTemperatureMinCelsius,
+          wbsi_marine_temperature_max_celsius: wbsiMarineTemperatureMaxCelsius,
         }),
       });
-      if (!res.ok) throw new Error("Failed");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || "Failed to save settings");
       setGlobalPerformanceMetricsEnabled(performanceMetricsEnabled);
       showMessage("Settings saved successfully");
     } catch (e) {
-      showMessage("Failed to save settings", true);
+      showMessage(e instanceof Error ? e.message : "Failed to save settings", true);
     }
   };
 
@@ -975,6 +1038,40 @@ const AdminModerationScreen: React.FC = () => {
   );
 
   // ---------- Settings Tab ----------
+  const renderSettingToggle = (label: string, description: string, value: boolean, onChange: (next: boolean) => void) => (
+    <View className="mb-4">
+      <Text className="text-sm font-medium text-gray-700 mb-1">{label}</Text>
+      {description ? <Text className="text-xs text-gray-500 mb-2">{description}</Text> : null}
+      <View className="flex-row space-x-2">
+        <TouchableOpacity
+          onPress={() => onChange(true)}
+          className={`flex-1 py-2 rounded-lg border items-center ${value ? "bg-waterbase-500 border-waterbase-500" : "bg-white border-gray-300"}`}
+        >
+          <Text className={`text-sm font-medium ${value ? "text-white" : "text-gray-700"}`}>Enabled</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => onChange(false)}
+          className={`flex-1 py-2 rounded-lg border items-center ${!value ? "bg-waterbase-500 border-waterbase-500" : "bg-white border-gray-300"}`}
+        >
+          <Text className={`text-sm font-medium ${!value ? "text-white" : "text-gray-700"}`}>Disabled</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  const renderNumberInput = (label: string, value: number, onChange: (next: number) => void, placeholder = "0") => (
+    <View className="w-1/2 px-1 mb-3">
+      <Text className="text-xs font-medium text-gray-700 mb-1">{label}</Text>
+      <TextInput
+        value={String(value)}
+        onChangeText={(v) => onChange(Number(v) || 0)}
+        keyboardType="numeric"
+        className="border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm"
+        placeholder={placeholder}
+      />
+    </View>
+  );
+
   const renderSettingsTab = () => (
     <View className="px-4 pb-6 space-y-4">
       <Card>
@@ -982,23 +1079,7 @@ const AdminModerationScreen: React.FC = () => {
           <CardTitle>System Configuration</CardTitle>
         </CardHeader>
         <CardContent>
-          <View className="mb-4">
-            <Text className="text-sm font-medium text-gray-700 mb-2">Auto-approve Reports</Text>
-            <View className="flex-row space-x-2">
-              <TouchableOpacity
-                onPress={() => setAutoApproveEnabled(true)}
-                className={`flex-1 py-2 rounded-lg border items-center ${autoApproveEnabled ? "bg-waterbase-500 border-waterbase-500" : "bg-white border-gray-300"}`}
-              >
-                <Text className={`text-sm font-medium ${autoApproveEnabled ? "text-white" : "text-gray-700"}`}>Enabled</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setAutoApproveEnabled(false)}
-                className={`flex-1 py-2 rounded-lg border items-center ${!autoApproveEnabled ? "bg-waterbase-500 border-waterbase-500" : "bg-white border-gray-300"}`}
-              >
-                <Text className={`text-sm font-medium ${!autoApproveEnabled ? "text-white" : "text-gray-700"}`}>Disabled</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          {renderSettingToggle("Auto-approve Reports", "", autoApproveEnabled, setAutoApproveEnabled)}
 
           <View className="mb-4">
             <Text className="text-sm font-medium text-gray-700 mb-2">AI Confidence Threshold (%)</Text>
@@ -1011,24 +1092,50 @@ const AdminModerationScreen: React.FC = () => {
             />
           </View>
 
-          <View className="mb-4">
-            <Text className="text-sm font-medium text-gray-700 mb-1">Performance Testing Readout</Text>
-            <Text className="text-xs text-gray-500 mb-2">
-              Shows screen, API, object count, and database timing at the bottom of app screens.
-            </Text>
-            <View className="flex-row space-x-2">
-              <TouchableOpacity
-                onPress={() => setPerformanceMetricsEnabled(true)}
-                className={`flex-1 py-2 rounded-lg border items-center ${performanceMetricsEnabled ? "bg-waterbase-500 border-waterbase-500" : "bg-white border-gray-300"}`}
-              >
-                <Text className={`text-sm font-medium ${performanceMetricsEnabled ? "text-white" : "text-gray-700"}`}>Enabled</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setPerformanceMetricsEnabled(false)}
-                className={`flex-1 py-2 rounded-lg border items-center ${!performanceMetricsEnabled ? "bg-waterbase-500 border-waterbase-500" : "bg-white border-gray-300"}`}
-              >
-                <Text className={`text-sm font-medium ${!performanceMetricsEnabled ? "text-white" : "text-gray-700"}`}>Disabled</Text>
-              </TouchableOpacity>
+          {renderSettingToggle("CSV Auto-approve", "Automatically approve imported CSV reports when eligible.", csvAutoApproveEnabled, setCsvAutoApproveEnabled)}
+          {renderSettingToggle("Mobile Gallery Submission", "Allow mobile users to submit report photos from gallery.", mobileGallerySubmissionEnabled, setMobileGallerySubmissionEnabled)}
+          {renderSettingToggle("Performance Testing Readout", "Shows screen, API, object count, and database timing at the bottom of app screens.", performanceMetricsEnabled, setPerformanceMetricsEnabled)}
+
+          <View className="border-t border-gray-200 pt-4 mt-2">
+            <Text className="text-sm font-semibold text-waterbase-950 mb-1">WBSI Area Grouping</Text>
+            <Text className="text-xs text-gray-500 mb-3">Controls Area WBSI grouping and sensor assignment.</Text>
+            <View className="flex-row flex-wrap -mx-1">
+              {renderNumberInput("Segment Radius (m)", wbsiNamedWaterBodySegmentRadiusM, setWbsiNamedWaterBodySegmentRadiusM)}
+              {renderNumberInput("Proximity Radius (m)", wbsiUngroupedProximityRadiusM, setWbsiUngroupedProximityRadiusM)}
+              {renderNumberInput("Sensor Radius (m)", wbsiSensorAssignmentRadiusM, setWbsiSensorAssignmentRadiusM)}
+            </View>
+          </View>
+
+          <View className="border-t border-gray-200 pt-4 mt-2">
+            <Text className="text-sm font-semibold text-waterbase-950 mb-1">Master Formula Weights</Text>
+            <Text className="text-xs text-gray-500 mb-3">Sensor + report weights must total 1.00.</Text>
+            <View className="flex-row flex-wrap -mx-1">
+              {renderNumberInput("Sensor Weight", wbsiSensorWeight, setWbsiSensorWeight, "0.60")}
+              {renderNumberInput("Report Weight", wbsiReportWeight, setWbsiReportWeight, "0.40")}
+            </View>
+          </View>
+
+          <View className="border-t border-gray-200 pt-4 mt-2">
+            <Text className="text-sm font-semibold text-waterbase-950 mb-3">Freshwater Baselines</Text>
+            <View className="flex-row flex-wrap -mx-1">
+              {renderNumberInput("pH Min", wbsiFreshwaterPhMin, setWbsiFreshwaterPhMin)}
+              {renderNumberInput("pH Max", wbsiFreshwaterPhMax, setWbsiFreshwaterPhMax)}
+              {renderNumberInput("Turbidity NTU", wbsiFreshwaterTurbidityNtu, setWbsiFreshwaterTurbidityNtu)}
+              {renderNumberInput("TDS mg/L", wbsiFreshwaterTdsMgL, setWbsiFreshwaterTdsMgL)}
+              {renderNumberInput("Temp Min C", wbsiFreshwaterTemperatureMinCelsius, setWbsiFreshwaterTemperatureMinCelsius)}
+              {renderNumberInput("Temp Max C", wbsiFreshwaterTemperatureMaxCelsius, setWbsiFreshwaterTemperatureMaxCelsius)}
+            </View>
+          </View>
+
+          <View className="border-t border-gray-200 pt-4 mt-2">
+            <Text className="text-sm font-semibold text-waterbase-950 mb-3">Marine Baselines</Text>
+            <View className="flex-row flex-wrap -mx-1">
+              {renderNumberInput("pH Min", wbsiMarinePhMin, setWbsiMarinePhMin)}
+              {renderNumberInput("pH Max", wbsiMarinePhMax, setWbsiMarinePhMax)}
+              {renderNumberInput("Turbidity NTU", wbsiMarineTurbidityNtu, setWbsiMarineTurbidityNtu)}
+              {renderNumberInput("TDS mg/L", wbsiMarineTdsMgL, setWbsiMarineTdsMgL)}
+              {renderNumberInput("Temp Min C", wbsiMarineTemperatureMinCelsius, setWbsiMarineTemperatureMinCelsius)}
+              {renderNumberInput("Temp Max C", wbsiMarineTemperatureMaxCelsius, setWbsiMarineTemperatureMaxCelsius)}
             </View>
           </View>
 

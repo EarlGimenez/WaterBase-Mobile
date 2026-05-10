@@ -52,6 +52,7 @@ export const API_ENDPOINTS = {
   NOTIFICATIONS_UNREAD_COUNT: `${API_CONFIG.BASE_URL}/notifications/unread-count`,
   NOTIFICATIONS_MARK_ALL_READ: `${API_CONFIG.BASE_URL}/notifications/mark-all-read`,
   DASHBOARD: `${API_CONFIG.BASE_URL}/dashboard`,
+  FORECAST: `${API_CONFIG.BASE_URL}/forecast`,
   PREDICT: `${API_CONFIG.BASE_URL}/predict`,
   ADMIN_STATS: `${API_CONFIG.BASE_URL}/admin/stats`,
   ADMIN_REPORTS_PENDING: `${API_CONFIG.BASE_URL}/admin/reports/pending`,

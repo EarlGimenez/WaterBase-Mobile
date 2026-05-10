@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { ActivityIndicator, Alert, Modal, RefreshControl, ScrollView, View, Text, TouchableOpacity, TextInput, Image } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
@@ -18,6 +19,16 @@ import { useAuth } from "../contexts/AuthContext";
 import { useFeedback } from "../contexts/FeedbackContext";
 import { WBSICalculator, type Report } from "../utils/wbsiCalculator";
 
+interface MobileReport extends Report {
+  report_group_id?: number;
+  region_code?: string;
+  region_name?: string;
+  province_name?: string;
+  municipality_name?: string;
+  barangay_name?: string;
+  geocoded_at?: string;
+}
+
 interface AreaReport {
   id: number;
   location: string;
@@ -28,7 +39,7 @@ interface AreaReport {
   description: string;
   estimatedCleanupEffort: string;
   priority: string;
-  reports: Report[];
+  reports: MobileReport[];
 }
 
 interface Volunteer {
@@ -61,6 +72,51 @@ interface JoinRequestRecord {
     email: string;
   };
 }
+
+interface CleanupEvidence {
+  id: number;
+  image: string;
+  ai_annotated_image?: string | null;
+  ai_severity?: string | null;
+  ai_confidence?: number | string;
+  pollution_percentage?: number | string;
+  result: string;
+  notes?: string | null;
+  created_at: string;
+  submitter?: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: string;
+  };
+}
+
+const EVENT_PRESETS = {
+  quick: {
+    name: "Quick",
+    detail: "2 hrs / 15 volunteers",
+    duration: "2",
+    maxVolunteers: "15",
+    rewardPoints: "30",
+    rewardBadge: "Water Defender",
+  },
+  halfDay: {
+    name: "Half-day",
+    detail: "4 hrs / 25 volunteers",
+    duration: "4",
+    maxVolunteers: "25",
+    rewardPoints: "60",
+    rewardBadge: "Environmental Steward",
+  },
+  fullDay: {
+    name: "Full-day",
+    detail: "8 hrs / 40 volunteers",
+    duration: "8",
+    maxVolunteers: "40",
+    rewardPoints: "100",
+    rewardBadge: "Cleanup Champion",
+  },
+};
 
 const OrganizerPortalScreen = () => {
   const navigation = useNavigation();
@@ -113,6 +169,17 @@ const OrganizerPortalScreen = () => {
     joined_via: string;
   }>>([]);
   const [isMembersLoading, setIsMembersLoading] = useState(false);
+  const [showUrgentOnly, setShowUrgentOnly] = useState(false);
+  const [isStartingEvent, setIsStartingEvent] = useState<number | null>(null);
+  const [isCompletingEvent, setIsCompletingEvent] = useState<number | null>(null);
+  const [messageEvent, setMessageEvent] = useState<any>(null);
+  const [customMessage, setCustomMessage] = useState("");
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [cleanupEvent, setCleanupEvent] = useState<any>(null);
+  const [cleanupEvidences, setCleanupEvidences] = useState<CleanupEvidence[]>([]);
+  const [cleanupEvidenceAsset, setCleanupEvidenceAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [isLoadingEvidence, setIsLoadingEvidence] = useState(false);
+  const [isSubmittingEvidence, setIsSubmittingEvidence] = useState(false);
 
   // QR Code display state
   const [showQRModal, setShowQRModal] = useState(false);
@@ -153,7 +220,7 @@ const OrganizerPortalScreen = () => {
 
       // Process reports
       const allReports = await reportsResponse.json();
-      const verifiedReports = Array.isArray(allReports) ? allReports.filter((r: Report) => r.status === 'verified') : [];
+      const verifiedReports = Array.isArray(allReports) ? allReports.filter((r: MobileReport) => r.status === 'verified') : [];
 
       // Process events
       const eventsData = await eventsResponse.json();
@@ -194,82 +261,129 @@ const OrganizerPortalScreen = () => {
     }
   }, [user?.id, user?.role, showError, hideFeedback]);
 
+  const areLocationsMatching = (coord1: { lat: number; lng: number }, coord2: { lat: number; lng: number }) => {
+    const latDiff = Math.abs(coord1.lat - coord2.lat);
+    const lngDiff = Math.abs(coord1.lng - coord2.lng);
+    return Math.sqrt(latDiff * latDiff + lngDiff * lngDiff) <= 0.001;
+  };
+
+  const isAreaBlockingEvent = (event: any) => {
+    const status = String(event.status || "").toLowerCase();
+    return status === "recruiting" || status === "active" || (status === "completed" && event.cleanup_verification_status !== "failed");
+  };
+
+  const getLocationString = (report: MobileReport) => {
+    if (report.barangay_name) return `${report.barangay_name}, ${report.municipality_name}, ${report.province_name}`;
+    if (report.municipality_name) return `${report.municipality_name}, ${report.province_name}`;
+    if (report.province_name) return report.province_name;
+    return report.address || `Location ${report.latitude?.toFixed(4)}, ${report.longitude?.toFixed(4)}`;
+  };
+
+  const getMostRecentEventDateForLocation = (coordinates: { lat: number; lng: number }, eventsData: any[]) => {
+    const eventsAtLocation = eventsData.filter((event) =>
+      isAreaBlockingEvent(event) && areLocationsMatching({ lat: event.latitude, lng: event.longitude }, coordinates)
+    );
+    if (eventsAtLocation.length === 0) return new Date(0);
+
+    const mostRecentEvent = [...eventsAtLocation].sort((a, b) =>
+      new Date(b.created_at || b.createdAt || b.date).getTime() - new Date(a.created_at || a.createdAt || a.date).getTime()
+    )[0];
+    if (mostRecentEvent.status === "recruiting" || mostRecentEvent.status === "active") {
+      return new Date(8640000000000000);
+    }
+    return new Date(mostRecentEvent.created_at || mostRecentEvent.createdAt || mostRecentEvent.date);
+  };
+
+  const buildAreaFromReports = (areaId: number, groupReports: MobileReport[], suffix = ""): AreaReport => {
+    const sortedReports = [...groupReports].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const mostRecentReport = sortedReports[0];
+    const pollutionTypes = [...new Set(groupReports.map((r) => r.pollutionType))];
+    const wbsiResult = wbsiCalculator.calculateWBSI(groupReports);
+    const severityLevel = getSeverityLevel(wbsiResult.wbsi_mode);
+    const location = `${getLocationString(mostRecentReport)}${suffix}`;
+
+    return {
+      id: areaId,
+      location,
+      coordinates: { lat: mostRecentReport.latitude, lng: mostRecentReport.longitude },
+      reportCount: groupReports.length,
+      severityLevel,
+      lastReported: formatDistanceToNow(new Date(mostRecentReport.created_at)),
+      description: groupReports.length === 1
+        ? `${pollutionTypes[0]} pollution reported`
+        : `Multiple pollution types: ${pollutionTypes.join(", ")} (${groupReports.length} reports)`,
+      estimatedCleanupEffort: estimateCleanupEffort(groupReports.length),
+      priority: calculatePriority(severityLevel, groupReports.length),
+      reports: groupReports,
+    };
+  };
+
   // Process reports into eligible areas
-  const processEligibleAreas = (reports: Report[], eventsData: any[]) => {
+  const processEligibleAreas = (reports: MobileReport[], eventsData: any[]) => {
     if (!reports || reports.length === 0) {
       setEligibleAreas([]);
       return;
     }
 
-    // Group reports by location (simplified for mobile)
-    const locationGroups: { [key: string]: Report[] } = {};
+    const groups: Record<string, MobileReport[]> = {};
     const DISTANCE_THRESHOLD = 0.001; // approximately 100m
 
     reports.forEach((report) => {
       if (!report.latitude || !report.longitude) return;
 
+      if (report.report_group_id) {
+        const groupKey = `group-${report.report_group_id}`;
+        groups[groupKey] = groups[groupKey] || [];
+        groups[groupKey].push(report);
+        return;
+      }
+
       let foundGroup = false;
-      Object.keys(locationGroups).forEach((groupKey) => {
+      Object.keys(groups).forEach((groupKey) => {
         if (foundGroup) return;
+        if (groupKey.startsWith("group-")) return;
         const [groupLat, groupLng] = groupKey.split(',').map(Number);
         const distance = Math.sqrt(
           Math.pow(report.latitude - groupLat, 2) + Math.pow(report.longitude - groupLng, 2)
         );
         if (distance <= DISTANCE_THRESHOLD) {
-          locationGroups[groupKey].push(report);
+          groups[groupKey].push(report);
           foundGroup = true;
         }
       });
 
       if (!foundGroup) {
         const newGroupKey = `${report.latitude},${report.longitude}`;
-        locationGroups[newGroupKey] = [report];
+        groups[newGroupKey] = [report];
       }
     });
 
-    // Convert groups to eligible areas
     const areas: AreaReport[] = [];
     let areaIdCounter = 1;
 
-    Object.entries(locationGroups)
-      .filter(([_, groupReports]) => groupReports.length >= 1)
-      .forEach(([locationKey, groupReports]) => {
-        const [lat, lng] = locationKey.split(',').map(Number);
+    Object.values(groups).forEach((groupReports) => {
+      const activeReports = groupReports.filter((report) => report.status !== "declined");
+      if (activeReports.length === 0) return;
 
-        // Check if this location already has a cleanup event
-        const locationCoords = { lat, lng };
-        const hasExistingEvent = eventsData.some((event: any) =>
-          Math.abs(event.latitude - lat) <= 0.001 && Math.abs(event.longitude - lng) <= 0.001
-        );
+      const mostRecentReport = [...activeReports].sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )[0];
+      const coordinates = { lat: mostRecentReport.latitude, lng: mostRecentReport.longitude };
+      const hasExistingEvent = eventsData.some((event: any) =>
+        isAreaBlockingEvent(event) && areLocationsMatching({ lat: event.latitude, lng: event.longitude }, coordinates)
+      );
 
-        if (!hasExistingEvent) {
-          const mostRecentReport = groupReports.sort((a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-          )[0];
-
-          const pollutionTypes = [...new Set(groupReports.map(r => r.pollutionType))];
-          const description = groupReports.length === 1
-            ? `${pollutionTypes[0]} pollution reported`
-            : `Multiple pollution types: ${pollutionTypes.join(', ')} (${groupReports.length} reports)`;
-
-          // Calculate severity using WBSI
-          const wbsiResult = wbsiCalculator.calculateWBSI(groupReports);
-          const severityLevel = getSeverityLevel(wbsiResult.wbsi_mode);
-
-          areas.push({
-            id: areaIdCounter++,
-            location: mostRecentReport.address || `Location ${lat.toFixed(4)}, ${lng.toFixed(4)}`,
-            coordinates: { lat, lng },
-            reportCount: groupReports.length,
-            severityLevel,
-            lastReported: formatDistanceToNow(new Date(mostRecentReport.created_at)),
-            description,
-            estimatedCleanupEffort: estimateCleanupEffort(groupReports.length),
-            priority: calculatePriority(severityLevel, groupReports.length),
-            reports: groupReports,
-          });
+      if (hasExistingEvent) {
+        const mostRecentEventDate = getMostRecentEventDateForLocation(coordinates, eventsData);
+        const reportsAfterEvent = activeReports.filter((report) => new Date(report.created_at) > mostRecentEventDate);
+        if (reportsAfterEvent.length > 0) {
+          areas.push(buildAreaFromReports(areaIdCounter++, reportsAfterEvent, " (New Reports)"));
         }
-      });
+        return;
+      }
+
+      areas.push(buildAreaFromReports(areaIdCounter++, activeReports));
+    });
 
     setEligibleAreas(areas);
   };
@@ -626,6 +740,147 @@ const OrganizerPortalScreen = () => {
     }
   };
 
+  const handleStartEvent = async (event: any) => {
+    setIsStartingEvent(event.id);
+    try {
+      const response = await apiRequest(API_ENDPOINTS.EVENT_START(event.id), { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || "Failed to start event");
+      await handleRefresh();
+      openQRModal({ ...event, status: "active" });
+    } catch (error) {
+      showError("Unable to start event", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setIsStartingEvent(null);
+    }
+  };
+
+  const handleCompleteEvent = (event: any) => {
+    Alert.alert(
+      "Complete Event",
+      `Mark "${event.title}" as completed? Linked reports will wait for after-cleanup evidence before resolution.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Complete",
+          onPress: async () => {
+            setIsCompletingEvent(event.id);
+            try {
+              const response = await apiRequest(API_ENDPOINTS.EVENT_COMPLETE(event.id), { method: "POST" });
+              const data = await response.json().catch(() => ({}));
+              if (!response.ok) throw new Error(data.message || "Failed to complete event");
+              await handleRefresh();
+              showSuccess("Event Completed", "Cleanup event was marked completed.");
+            } catch (error) {
+              showError("Unable to complete event", error instanceof Error ? error.message : "Please try again.");
+            } finally {
+              setIsCompletingEvent(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCancelEvent = (event: any) => {
+    Alert.alert(
+      "Cancel Event",
+      `Cancel "${event.title}"? Registered volunteers will be notified.`,
+      [
+        { text: "Keep Event", style: "cancel" },
+        {
+          text: "Cancel Event",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const response = await apiRequest(API_ENDPOINTS.EVENT_CANCEL(event.id), { method: "POST" });
+              if (!response.ok) throw new Error("Failed to cancel event");
+              await handleRefresh();
+              showSuccess("Event Cancelled", "Cleanup event was cancelled.");
+            } catch (error) {
+              showError("Unable to cancel event", error instanceof Error ? error.message : "Please try again.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleSendMessage = async (useCustom: boolean) => {
+    if (!messageEvent) return;
+    setIsSendingMessage(true);
+    try {
+      const body = useCustom && customMessage.trim() ? { message: customMessage.trim() } : {};
+      const response = await apiRequest(API_ENDPOINTS.EVENT_MESSAGE_VOLUNTEERS(messageEvent.id), {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || "Failed to send message");
+      setMessageEvent(null);
+      setCustomMessage("");
+      showSuccess("Message Sent", "Volunteers were notified.");
+    } catch (error) {
+      showError("Unable to message volunteers", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
+
+  const loadCleanupEvidence = async (event: any) => {
+    setCleanupEvent(event);
+    setCleanupEvidenceAsset(null);
+    setIsLoadingEvidence(true);
+    try {
+      const response = await apiRequest(API_ENDPOINTS.EVENT_CLEANUP_EVIDENCE(event.id), { method: "GET" });
+      const data = await response.json().catch(() => ({}));
+      setCleanupEvidences(Array.isArray(data.evidences) ? data.evidences : []);
+    } catch (error) {
+      setCleanupEvidences([]);
+    } finally {
+      setIsLoadingEvidence(false);
+    }
+  };
+
+  const pickCleanupEvidence = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets?.[0]) {
+      setCleanupEvidenceAsset(result.assets[0]);
+    }
+  };
+
+  const submitCleanupEvidence = async () => {
+    if (!cleanupEvent || !cleanupEvidenceAsset) return;
+    const formData = new FormData();
+    formData.append("image", {
+      uri: cleanupEvidenceAsset.uri,
+      name: cleanupEvidenceAsset.fileName || `cleanup-${cleanupEvent.id}.jpg`,
+      type: cleanupEvidenceAsset.mimeType || "image/jpeg",
+    } as any);
+
+    setIsSubmittingEvidence(true);
+    try {
+      const response = await apiRequest(API_ENDPOINTS.EVENT_CLEANUP_EVIDENCE(cleanupEvent.id), {
+        method: "POST",
+        body: formData,
+        headers: { Accept: "application/json" },
+      } as any);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || "Failed to submit cleanup evidence");
+      setCleanupEvidenceAsset(null);
+      await loadCleanupEvidence(cleanupEvent);
+      await handleRefresh();
+      showSuccess("Evidence Submitted", data.message || "Cleanup evidence was uploaded.");
+    } catch (error) {
+      showError("Unable to submit evidence", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setIsSubmittingEvidence(false);
+    }
+  };
+
   const handleDeclineReport = async (reportId: number) => {
     Alert.alert(
       "Decline Report",
@@ -653,6 +908,99 @@ const OrganizerPortalScreen = () => {
     );
   };
 
+  const handleBulkDeclineReports = (pendingReports: MobileReport[]) => {
+    if (pendingReports.length === 0) return;
+    Alert.alert(
+      "Decline Reports",
+      `Decline all ${pendingReports.length} pending reports in this area?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Decline All",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const response = await apiRequest(API_ENDPOINTS.REPORTS_BULK_STATUS, {
+                method: "PATCH",
+                body: JSON.stringify({
+                  report_ids: pendingReports.map((report) => report.id),
+                  status: "declined",
+                }),
+              });
+              const data = await response.json().catch(() => ({}));
+              if (!response.ok) throw new Error(data.message || "Failed to decline reports");
+              await handleRefresh();
+              setShowAreaDetails(false);
+              showSuccess("Reports Declined", `${pendingReports.length} reports were declined.`);
+            } catch (error) {
+              showError("Unable to decline reports", error instanceof Error ? error.message : "Please try again.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const filteredAreas = showUrgentOnly
+    ? eligibleAreas.filter((area) => ["high", "critical"].includes(area.severityLevel.toLowerCase()))
+    : eligibleAreas;
+
+  const sortedEvents = [...createdEvents].sort((a, b) => {
+    const statusOrder: Record<string, number> = { recruiting: 1, active: 2, completed: 3, cancelled: 4 };
+    const statusDiff = (statusOrder[a.status] || 5) - (statusOrder[b.status] || 5);
+    if (statusDiff !== 0) return statusDiff;
+    return new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime();
+  });
+
+  const applyPreset = (presetKey: keyof typeof EVENT_PRESETS) => {
+    const preset = EVENT_PRESETS[presetKey];
+    setNewEvent((prev) => ({
+      ...prev,
+      duration: preset.duration,
+      maxVolunteers: preset.maxVolunteers,
+      rewardPoints: preset.rewardPoints,
+      rewardBadge: preset.rewardBadge,
+    }));
+  };
+
+  const generateDefaultTitle = () => {
+    if (!selectedArea) return "";
+    const isUrgent = ["critical", "high"].includes(selectedArea.severityLevel.toLowerCase());
+    return `${isUrgent ? "Urgent Cleanup:" : "Cleanup Event:"} ${selectedArea.location}`;
+  };
+
+  const getBadgeClass = (value?: string) => {
+    switch ((value || "").toLowerCase()) {
+      case "critical":
+      case "cancelled":
+        return "bg-red-100 text-red-800";
+      case "high":
+        return "bg-orange-100 text-orange-800";
+      case "medium":
+      case "recruiting":
+        return "bg-blue-100 text-blue-800";
+      case "active":
+      case "low":
+      case "approved":
+        return "bg-green-100 text-green-800";
+      default:
+        return "bg-gray-100 text-gray-800";
+    }
+  };
+
+  const getCleanupVerificationLabel = (status?: string) => {
+    switch (status) {
+      case "pending":
+        return "Pending cleanup proof";
+      case "approved":
+        return "Cleanliness verified";
+      case "failed":
+        return "Cleanup proof failed";
+      default:
+        return "Cleanup proof not required yet";
+    }
+  };
+
   const tabs = [
     { key: 'areas', label: 'Reports', icon: 'map' },
     { key: 'events', label: 'My Events', icon: 'calendar' },
@@ -670,23 +1018,45 @@ const OrganizerPortalScreen = () => {
       case 'areas':
         return (
           <View className="space-y-4">
-            {eligibleAreas.length === 0 ? (
+            <View className="flex-row items-center justify-between">
+              <View>
+                <Text className="text-lg font-semibold text-waterbase-950">Areas with Reports</Text>
+                <Text className="text-xs text-gray-600">{filteredAreas.length} of {eligibleAreas.length} locations shown</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowUrgentOnly((value) => !value)}
+                className={`px-3 py-2 rounded-lg ${showUrgentOnly ? "bg-red-500" : "bg-gray-100"}`}
+              >
+                <Text className={`text-xs font-semibold ${showUrgentOnly ? "text-white" : "text-gray-700"}`}>
+                  {showUrgentOnly ? "Urgent" : "All"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {filteredAreas.length === 0 ? (
               <Card className="border-waterbase-200">
                 <CardContent className="p-6 text-center">
                   <Ionicons name="document-text-outline" size={48} color="#6b7280" />
                   <Text className="text-lg font-medium text-gray-900 mt-4 mb-2">
-                    No Eligible Areas Yet
+                    {showUrgentOnly ? "No Urgent Areas" : "No Eligible Areas Yet"}
                   </Text>
                   <Text className="text-gray-600">
-                    Areas need at least 1 verified report to be eligible for cleanup events.
+                    {showUrgentOnly
+                      ? "No high or critical areas are currently available."
+                      : "Areas need at least 1 verified report to be eligible for cleanup events."}
                   </Text>
                 </CardContent>
               </Card>
             ) : (
-              eligibleAreas.map((area) => (
+              filteredAreas.map((area) => (
                 <Card key={area.id} className="border-waterbase-200">
                   <CardHeader>
-                    <CardTitle className="text-base text-waterbase-950">{area.location}</CardTitle>
+                    <View className="flex-row items-start justify-between">
+                      <CardTitle className="text-base text-waterbase-950 flex-1 mr-2">{area.location}</CardTitle>
+                      <View className={`px-2 py-1 rounded-full ${getBadgeClass(area.severityLevel)}`}>
+                        <Text className="text-xs font-semibold">{area.severityLevel}</Text>
+                      </View>
+                    </View>
                     <CardDescription className="text-sm">{area.description}</CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -696,8 +1066,8 @@ const OrganizerPortalScreen = () => {
                         <Text className="font-semibold text-waterbase-950">{area.reportCount} verified</Text>
                       </View>
                       <View>
-                        <Text className="text-xs text-gray-600">Severity</Text>
-                        <Text className="font-semibold text-waterbase-950">{area.severityLevel}</Text>
+                        <Text className="text-xs text-gray-600">Effort</Text>
+                        <Text className="font-semibold text-waterbase-950">{area.estimatedCleanupEffort}</Text>
                       </View>
                       <View>
                         <Text className="text-xs text-gray-600">Last Report</Text>
@@ -713,6 +1083,7 @@ const OrganizerPortalScreen = () => {
                         title="Create Event"
                         onPress={() => {
                           setSelectedArea(area);
+                          setNewEvent((prev) => ({ ...prev, title: prev.title || `${["high", "critical"].includes(area.severityLevel.toLowerCase()) ? "Urgent Cleanup:" : "Cleanup Event:"} ${area.location}` }));
                           setShowCreateEvent(true);
                         }}
                         variant="primary"
@@ -738,6 +1109,34 @@ const OrganizerPortalScreen = () => {
       case 'events':
         return (
           <View className="space-y-4">
+            {createdEvents.length > 0 && (
+              <Card className="border-waterbase-200">
+                <CardHeader>
+                  <CardTitle className="text-base text-waterbase-950">Event Statistics</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <View className="grid grid-cols-2 gap-3">
+                    <View className="p-3 bg-waterbase-50 rounded-lg">
+                      <Text className="text-xl font-bold text-waterbase-700">{createdEvents.length}</Text>
+                      <Text className="text-xs text-gray-600">Total Events</Text>
+                    </View>
+                    <View className="p-3 bg-enviro-50 rounded-lg">
+                      <Text className="text-xl font-bold text-enviro-700">{createdEvents.filter((event) => event.status === "active").length}</Text>
+                      <Text className="text-xs text-gray-600">Active Events</Text>
+                    </View>
+                    <View className="p-3 bg-green-50 rounded-lg">
+                      <Text className="text-xl font-bold text-green-700">{createdEvents.reduce((sum, event) => sum + (event.currentVolunteers || 0), 0)}</Text>
+                      <Text className="text-xs text-gray-600">Volunteers</Text>
+                    </View>
+                    <View className="p-3 bg-yellow-50 rounded-lg">
+                      <Text className="text-xl font-bold text-yellow-700">{createdEvents.reduce((sum, event) => sum + (event.points || 0), 0)}</Text>
+                      <Text className="text-xs text-gray-600">Points Offered</Text>
+                    </View>
+                  </View>
+                </CardContent>
+              </Card>
+            )}
+
             {createdEvents.length === 0 ? (
               <Card className="border-waterbase-200">
                 <CardContent className="p-6 text-center">
@@ -751,10 +1150,15 @@ const OrganizerPortalScreen = () => {
                 </CardContent>
               </Card>
             ) : (
-              createdEvents.map((event) => (
+              sortedEvents.map((event) => (
                 <Card key={event.id} className="border-waterbase-200">
                   <CardHeader>
-                    <CardTitle className="text-base text-waterbase-950">{event.title}</CardTitle>
+                    <View className="flex-row items-start justify-between">
+                      <CardTitle className="text-base text-waterbase-950 flex-1 mr-2">{event.title}</CardTitle>
+                      <View className={`px-2 py-1 rounded-full ${getBadgeClass(event.status)}`}>
+                        <Text className="text-xs font-semibold capitalize">{event.status}</Text>
+                      </View>
+                    </View>
                     <CardDescription className="text-sm">
                       {new Date(event.date).toLocaleDateString()} at {event.time}
                     </CardDescription>
@@ -776,12 +1180,39 @@ const OrganizerPortalScreen = () => {
                         <Text className="font-semibold text-waterbase-950">{event.duration} hours</Text>
                       </View>
                       <View>
-                        <Text className="text-xs text-gray-600">Status</Text>
-                        <Text className="font-semibold text-waterbase-950 capitalize">{event.status}</Text>
+                        <Text className="text-xs text-gray-600">Badge</Text>
+                        <Text className="font-semibold text-waterbase-950">{event.badge || "Environmental Volunteer"}</Text>
                       </View>
                     </View>
+                    <View className="w-full h-2 bg-gray-200 rounded-full mb-3">
+                      <View
+                        className="h-2 bg-waterbase-500 rounded-full"
+                        style={{ width: `${Math.min(((event.currentVolunteers || 0) / Math.max(event.maxVolunteers || 1, 1)) * 100, 100)}%` }}
+                      />
+                    </View>
+                    {event.status === "completed" && (
+                      <Text className="text-xs text-gray-600 mb-2">{getCleanupVerificationLabel(event.cleanup_verification_status)}</Text>
+                    )}
                     <View className="space-y-2">
+                      {event.status === 'recruiting' && (
+                        <Button
+                          title={isStartingEvent === event.id ? "Starting..." : "Start Event"}
+                          onPress={() => handleStartEvent(event)}
+                          variant="primary"
+                          disabled={isStartingEvent === event.id}
+                          className="w-full bg-enviro-500"
+                        />
+                      )}
                       {event.status === 'active' && (
+                        <Button
+                          title={isCompletingEvent === event.id ? "Completing..." : "Complete Event"}
+                          onPress={() => handleCompleteEvent(event)}
+                          variant="primary"
+                          disabled={isCompletingEvent === event.id}
+                          className="w-full bg-green-600"
+                        />
+                      )}
+                      {(event.status === 'recruiting' || event.status === 'active') && (
                         <Button
                           title="Show QR Code"
                           onPress={() => openQRModal(event)}
@@ -790,11 +1221,35 @@ const OrganizerPortalScreen = () => {
                         />
                       )}
                       <Button
+                        title="Message Volunteers"
+                        onPress={() => {
+                          setMessageEvent(event);
+                          setCustomMessage("");
+                        }}
+                        variant="outline"
+                        className="w-full"
+                      />
+                      <Button
+                        title="Event Updates"
+                        onPress={() => loadCleanupEvidence(event)}
+                        variant="outline"
+                        className="w-full"
+                      />
+                      <Button
                         title="Edit Event"
                         onPress={() => openEditEventModal(event)}
                         variant="outline"
                         className="w-full"
                       />
+                      {(event.status === 'recruiting' || event.status === 'active') && (
+                        <Button
+                          title="Cancel Event"
+                          onPress={() => handleCancelEvent(event)}
+                          variant="outline"
+                          className="w-full bg-red-50 border-red-200"
+                          textColor="text-red-700"
+                        />
+                      )}
                     </View>
                   </CardContent>
                 </Card>
@@ -993,23 +1448,29 @@ const OrganizerPortalScreen = () => {
       <SafeAreaView className="flex-1 bg-gradient-to-br from-waterbase-50 to-enviro-50">
         <Navigation title="Organizer Portal" showBackButton={true} />
 
-        <View className="flex-row px-4 py-4 border-b border-gray-200">
-          {tabs.map((tab) => (
-            <TouchableOpacity
-              key={tab.key}
-              className={`flex-1 py-3 px-4 rounded-lg items-center ${activeTab === tab.key ? 'bg-waterbase-500' : 'bg-gray-100'}`}
-              onPress={() => setActiveTab(tab.key)}
-            >
-              <Ionicons
-                name={tab.icon as any}
-                size={20}
-                color={activeTab === tab.key ? '#ffffff' : '#6b7280'}
-              />
-              <Text className={`text-xs mt-1 font-medium ${activeTab === tab.key ? 'text-white' : 'text-gray-600'}`}>
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        <View className="border-b border-gray-200 py-3">
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
+            {tabs.map((tab) => (
+              <TouchableOpacity
+                key={tab.key}
+                style={{ minWidth: 96 }}
+                className={`mr-2 py-3 px-3 rounded-lg items-center ${activeTab === tab.key ? 'bg-waterbase-500' : 'bg-gray-100'}`}
+                onPress={() => setActiveTab(tab.key)}
+              >
+                <Ionicons
+                  name={tab.icon as any}
+                  size={20}
+                  color={activeTab === tab.key ? '#ffffff' : '#6b7280'}
+                />
+                <Text
+                  numberOfLines={1}
+                  className={`text-xs mt-1 font-medium ${activeTab === tab.key ? 'text-white' : 'text-gray-600'}`}
+                >
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
 
         <ScrollView
@@ -1042,13 +1503,32 @@ const OrganizerPortalScreen = () => {
               <ScrollView showsVerticalScrollIndicator={false}>
                 <View className="space-y-4">
                   <View>
+                    <Text className="text-sm font-medium text-waterbase-950 mb-2">Quick Templates</Text>
+                    <View className="flex-row space-x-2">
+                      {Object.entries(EVENT_PRESETS).map(([key, preset]) => (
+                        <TouchableOpacity
+                          key={key}
+                          onPress={() => applyPreset(key as keyof typeof EVENT_PRESETS)}
+                          className="flex-1 p-3 rounded-lg border border-waterbase-200 bg-waterbase-50 mr-2"
+                        >
+                          <Text className="text-xs font-semibold text-waterbase-950">{preset.name}</Text>
+                          <Text className="text-[10px] text-waterbase-700 mt-1">{preset.detail}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  <View>
                     <Text className="text-sm font-medium text-waterbase-950 mb-2">Event Title *</Text>
                     <TextInput
                       className="border border-gray-300 rounded-lg px-3 py-2"
-                      placeholder="e.g., Beach Cleanup at Manila Bay"
+                      placeholder={generateDefaultTitle() || "e.g., Beach Cleanup at Manila Bay"}
                       value={newEvent.title}
                       onChangeText={(text) => setNewEvent({ ...newEvent, title: text })}
                     />
+                    {!newEvent.title && generateDefaultTitle() ? (
+                      <Text className="text-xs text-gray-500 mt-1">Suggested: {generateDefaultTitle()}</Text>
+                    ) : null}
                   </View>
 
                   <View className="flex-row space-x-4">
@@ -1075,13 +1555,17 @@ const OrganizerPortalScreen = () => {
                   <View className="flex-row space-x-4">
                     <View className="flex-1">
                       <Text className="text-sm font-medium text-waterbase-950 mb-2">Duration (hours)</Text>
-                      <TextInput
-                        className="border border-gray-300 rounded-lg px-3 py-2"
-                        placeholder="2"
-                        value={newEvent.duration}
-                        onChangeText={(text) => setNewEvent({ ...newEvent, duration: text })}
-                        keyboardType="numeric"
-                      />
+                      <View className="flex-row flex-wrap">
+                        {["2", "3", "4", "6", "8"].map((duration) => (
+                          <TouchableOpacity
+                            key={duration}
+                            onPress={() => setNewEvent({ ...newEvent, duration })}
+                            className={`px-3 py-2 rounded-lg mr-2 mb-2 ${newEvent.duration === duration ? "bg-waterbase-500" : "bg-gray-100"}`}
+                          >
+                            <Text className={`text-xs font-medium ${newEvent.duration === duration ? "text-white" : "text-gray-700"}`}>{duration}h</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </View>
                     <View className="flex-1">
                       <Text className="text-sm font-medium text-waterbase-950 mb-2">Max Volunteers *</Text>
@@ -1313,6 +1797,15 @@ const OrganizerPortalScreen = () => {
                     </View>
 
                     <Text className="text-sm font-medium text-waterbase-950 mt-4 mb-2">Individual Reports</Text>
+                    {selectedArea.reports.some((report) => report.status === "pending") && (
+                      <Button
+                        title={`Decline ${selectedArea.reports.filter((report) => report.status === "pending").length} Pending Reports`}
+                        onPress={() => handleBulkDeclineReports(selectedArea.reports.filter((report) => report.status === "pending"))}
+                        variant="outline"
+                        className="bg-red-50 border-red-200"
+                        textColor="text-red-700"
+                      />
+                    )}
                     {selectedArea.reports.map((report) => (
                       <View key={report.id} className="p-3 bg-gray-50 rounded-lg">
                         <Text className="font-medium text-waterbase-950">{report.title}</Text>
@@ -1344,6 +1837,88 @@ const OrganizerPortalScreen = () => {
               )}
             </View>
           </View>
+        </Modal>
+
+        {/* Message Volunteers Modal */}
+        <Modal visible={!!messageEvent} transparent animationType="fade" onRequestClose={() => setMessageEvent(null)}>
+          <View className="flex-1 bg-black/50 justify-center px-6">
+            <View className="bg-white rounded-xl p-4">
+              <Text className="text-lg font-semibold text-waterbase-950 mb-1">Message Volunteers</Text>
+              <Text className="text-sm text-gray-600 mb-3">
+                Send a reminder or custom message for "{messageEvent?.title}".
+              </Text>
+              <TextInput
+                value={customMessage}
+                onChangeText={setCustomMessage}
+                placeholder="Custom message (optional)"
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+                className="border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm mb-4"
+              />
+              <View className="space-y-2">
+                <Button title="Send Pre-built Reminder" onPress={() => handleSendMessage(false)} variant="outline" disabled={isSendingMessage} />
+                <Button title={isSendingMessage ? "Sending..." : "Send Custom Message"} onPress={() => handleSendMessage(true)} disabled={isSendingMessage || !customMessage.trim()} />
+                <Button title="Cancel" onPress={() => setMessageEvent(null)} variant="outline" disabled={isSendingMessage} />
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Cleanup Evidence Modal */}
+        <Modal visible={!!cleanupEvent} animationType="slide" onRequestClose={() => setCleanupEvent(null)}>
+          <SafeAreaView className="flex-1 bg-white">
+            <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200">
+              <View className="flex-1 mr-3">
+                <Text className="text-lg font-semibold text-waterbase-950">Cleanup Evidence</Text>
+                <Text className="text-xs text-gray-600">{cleanupEvent?.title}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setCleanupEvent(null)}>
+                <Ionicons name="close" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView className="flex-1 p-4" contentContainerStyle={{ paddingBottom: 40 }}>
+              {(cleanupEvent?.status === "active" || cleanupEvent?.status === "completed") && cleanupEvent?.cleanup_verification_status !== "approved" && (
+                <Card className="border-waterbase-200 mb-4">
+                  <CardHeader>
+                    <CardTitle className="text-base text-waterbase-950">Upload after-cleanup photo</CardTitle>
+                    <CardDescription className="text-sm">AI will check if visible trash pollution has dropped enough to resolve linked reports.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {cleanupEvidenceAsset ? (
+                      <Image source={{ uri: cleanupEvidenceAsset.uri }} className="w-full h-44 rounded-lg mb-3" resizeMode="cover" />
+                    ) : null}
+                    <View className="space-y-2">
+                      <Button title={cleanupEvidenceAsset ? "Choose Different Photo" : "Choose Photo"} onPress={pickCleanupEvidence} variant="outline" />
+                      <Button title={isSubmittingEvidence ? "Submitting..." : "Submit Evidence"} onPress={submitCleanupEvidence} disabled={!cleanupEvidenceAsset || isSubmittingEvidence} />
+                    </View>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Text className="text-sm font-semibold text-waterbase-950 mb-2">Submitted evidence</Text>
+              {isLoadingEvidence ? (
+                <View className="items-center py-6">
+                  <ActivityIndicator size="small" color="#0369a1" />
+                  <Text className="text-waterbase-600 mt-2">Loading evidence...</Text>
+                </View>
+              ) : cleanupEvidences.length === 0 ? (
+                <Text className="text-gray-600">No cleanup evidence submitted yet.</Text>
+              ) : (
+                cleanupEvidences.map((evidence) => (
+                  <View key={evidence.id} className="p-3 bg-gray-50 rounded-lg mb-3">
+                    <Text className="font-semibold text-waterbase-950 capitalize">{evidence.result}</Text>
+                    <Text className="text-xs text-gray-600">
+                      AI severity: {evidence.ai_severity || "n/a"} | Pollution: {evidence.pollution_percentage ?? 0}%
+                    </Text>
+                    <Text className="text-xs text-gray-600">
+                      Submitted {new Date(evidence.created_at).toLocaleString()}
+                    </Text>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </SafeAreaView>
         </Modal>
 
         {/* QR Code Display Modal */}
