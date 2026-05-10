@@ -172,6 +172,8 @@ const ReportPollutionScreen = () => {
 
   type SeverityLevel = typeof severityLevels[number];
 
+  const createReportImageFileName = () => `pollution_report_${Date.now()}.jpg`;
+
   // Request permissions
   const requestPermissions = async () => {
     const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
@@ -342,7 +344,7 @@ const ReportPollutionScreen = () => {
       aiFormData.append('image', {
         uri: imageUri,
         type: 'image/jpeg',
-        name: 'pollution_report.jpg',
+        name: createReportImageFileName(),
       } as any);
       aiFormData.append('severityByUser', formData.severityByUser || 'medium');
 
@@ -599,7 +601,7 @@ const ReportPollutionScreen = () => {
         submitFormData.append('image', {
           uri: formData.image,
           type: 'image/jpeg',
-          name: 'pollution_report.jpg',
+          name: createReportImageFileName(),
         } as any);
       }
 

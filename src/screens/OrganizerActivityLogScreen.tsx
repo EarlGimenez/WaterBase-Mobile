@@ -77,9 +77,8 @@ export const OrganizerActivityLogScreen = () => {
       setIsLoading(true);
 
       // Fetch events created by this user
-      const allEvents = await eventService.getAllEvents(token);
-      const userEvents = allEvents.filter((e) => e.user_id === user.id);
-      const sorted = userEvents.sort(
+      const createdEvents = await eventService.getCreatedEvents();
+      const sorted = createdEvents.sort(
         (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
       );
       setEvents(sorted);
@@ -104,32 +103,15 @@ export const OrganizerActivityLogScreen = () => {
       }
       setBadgesIssuedCount(badgeCount);
 
-      // Fetch reports from their area
-      if (user.areaOfResponsibility) {
-        try {
-          const reportsRes = await fetch(`/api/reports/area/${encodeURIComponent(user.areaOfResponsibility)}`, {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-          });
-          if (reportsRes.ok) {
-            const reportsData = await reportsRes.json();
-            console.log('Fetched area reports:', reportsData);
-            setReports(reportsData.filter((r: any) => typeof r === 'object' && r !== null).map((r: any) => ({ ...r, user: r.user || null })));
-          }
-        } catch (e) {
-          console.error('Error fetching area reports:', e);
-        }
-      }
+      // Fetch reports submitted by this user
+      const reportsRes = await apiRequest(API_ENDPOINTS.REPORTS);
+      const reportsData = await reportsRes.json();
+      setReports(reportsData.filter((r: any) => typeof r === 'object' && r !== null).map((r: any) => ({ ...r, user: r.user || null })));
 
       // Fetch stats
       const statsRes = await apiRequest(API_ENDPOINTS.USER_STATS);
       const statsData = await statsRes.json();
       setStats(statsData);
-      if (statsData.badges) {
-        setBadges(statsData.badges);
-      }
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -269,9 +251,7 @@ export const OrganizerActivityLogScreen = () => {
         <View className="py-12 items-center">
           <AlertCircle size={48} className="text-gray-300 mb-4" />
           <Text className="text-gray-600">
-            {user?.areaOfResponsibility 
-              ? "No reports found in your area" 
-              : "Set your area of responsibility to see reports"}
+            No reports found
           </Text>
         </View>
       ) : (
@@ -384,7 +364,7 @@ export const OrganizerActivityLogScreen = () => {
                   }`}
                 >
                   {tab === 'events' && `Events (${events.length})`}
-                  {tab === 'reports' && `Area Reports (${reports.length})`}
+                  {tab === 'reports' && `Reports (${reports.length})`}
                   {tab === 'badges' && 'Badges Issued'}
                 </Text>
               </TouchableOpacity>

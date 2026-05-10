@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Modal, RefreshControl, ScrollView, View, Text, TextInput, TouchableOpacity } from "react-native";
+import { Alert, Image, Modal, RefreshControl, ScrollView, View, Text, TextInput, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
+import * as ImagePicker from "expo-image-picker";
 import {
   Card,
   CardHeader,
@@ -15,6 +16,7 @@ import ProtectedContent from "../components/ProtectedContent";
 import { API_ENDPOINTS, apiRequest } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useFeedback } from "../contexts/FeedbackContext";
+import { resolveProfilePhotoUri } from "../utils/imageUrl";
 
 type CommunityUpdate = {
   id: number;
@@ -28,6 +30,7 @@ type CommunityUpdate = {
     organization?: string;
     firstName: string;
     lastName: string;
+    profile_photo?: string | null;
   };
 };
 
@@ -67,11 +70,25 @@ type CleanupDrive = {
   points: number;
   badge?: string;
   status: string;
+  cleanup_verification_status?: "not_required" | "pending" | "approved" | "failed";
+  cleanup_verification_notes?: string | null;
   creator?: {
+    id: number;
     firstName: string;
     lastName: string;
     organization?: string;
+    profile_photo?: string | null;
   };
+};
+
+const getInitials = (firstName?: string, lastName?: string, organization?: string) => {
+  const source = organization || `${firstName || ""} ${lastName || ""}`.trim();
+  return source
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "WB";
 };
 
 const CommunityScreen = () => {
@@ -88,6 +105,7 @@ const CommunityScreen = () => {
   const [joinedDriveIds, setJoinedDriveIds] = useState<number[]>([]);
   const [presentDriveIds, setPresentDriveIds] = useState<Set<number>>(new Set());
   const [driveActionId, setDriveActionId] = useState<number | null>(null);
+  const [cleanupEvidenceActionId, setCleanupEvidenceActionId] = useState<number | null>(null);
   const [activeSection, setActiveSection] = useState<"drives" | "feed" | "organizations">("drives");
   const [selectedDrive, setSelectedDrive] = useState<CleanupDrive | null>(null);
   const [orgSearchQuery, setOrgSearchQuery] = useState("");
@@ -106,17 +124,6 @@ const CommunityScreen = () => {
     const role = (user?.role || "").toLowerCase();
     return role !== "ngo" && role !== "lgu" && role !== "admin" && role !== "researcher";
   }, [user?.role]);
-
-  const getUpdateIcon = (type: string) => {
-    switch (type) {
-      case "event":
-        return "calendar";
-      case "announcement":
-        return "megaphone";
-      default:
-        return "chatbubble-ellipses";
-    }
-  };
 
   const getUpdateColor = (type: string) => {
     switch (type) {
@@ -151,6 +158,29 @@ const CommunityScreen = () => {
 
   const joinedDriveIdSet = useMemo(() => new Set(joinedDriveIds), [joinedDriveIds]);
 
+  const organizationNetworkById = useMemo(() => {
+    const map = new Map<number, "Member org" | "Following">();
+    organizations.forEach((organization) => {
+      if (organization.is_member) {
+        map.set(organization.id, "Member org");
+      } else if (organization.is_following) {
+        map.set(organization.id, "Following");
+      }
+    });
+    return map;
+  }, [organizations]);
+
+  const recruitingDrives = useMemo(() => {
+    return cleanupDrives
+      .filter((drive) => drive.status === "recruiting" || drive.status === "active")
+      .sort((a, b) => {
+        const aIsNetwork = a.creator?.id ? organizationNetworkById.has(a.creator.id) : false;
+        const bIsNetwork = b.creator?.id ? organizationNetworkById.has(b.creator.id) : false;
+        if (aIsNetwork !== bIsNetwork) return aIsNetwork ? -1 : 1;
+        return new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime();
+      });
+  }, [cleanupDrives, organizationNetworkById]);
+
   const filteredOrganizations = useMemo(() => {
     if (!orgSearchQuery.trim()) return organizations;
     const query = orgSearchQuery.toLowerCase();
@@ -173,6 +203,7 @@ const CommunityScreen = () => {
     }
     try {
       let feedPayload: any = { data: [] };
+      let directoryPayload: any = { data: [] };
       let userRequestsPayload: any = { data: [] };
       let userEventsPayload: any = [];
       let drivesPayload: any = [];
@@ -182,6 +213,13 @@ const CommunityScreen = () => {
         feedPayload = await res.json();
       } catch (e) {
         console.error("Failed to fetch community feed", e);
+      }
+
+      try {
+        const res = await apiRequest(API_ENDPOINTS.ORGANIZATIONS_DIRECTORY, { method: "GET" });
+        directoryPayload = await res.json();
+      } catch (e) {
+        console.error("Failed to fetch organizations directory", e);
       }
 
       try {
@@ -206,6 +244,7 @@ const CommunityScreen = () => {
       }
 
       setUpdates(Array.isArray(feedPayload?.data) ? feedPayload.data : []);
+      setOrganizations(Array.isArray(directoryPayload?.data) ? directoryPayload.data : []);
       setJoinRequests(Array.isArray(userRequestsPayload?.data) ? userRequestsPayload.data : []);
       setCleanupDrives(Array.isArray(drivesPayload) ? drivesPayload : Array.isArray(drivesPayload?.data) ? drivesPayload.data : []);
       const userEvents = Array.isArray(userEventsPayload) ? userEventsPayload : [];
@@ -370,6 +409,74 @@ const CommunityScreen = () => {
     }
   };
 
+  const getCleanupVerificationLabel = (status?: string) => {
+    switch (status) {
+      case "pending":
+        return "Pending cleanup proof";
+      case "approved":
+        return "Cleanliness verified";
+      case "failed":
+        return "Cleanup proof failed / needs more evidence";
+      default:
+        return "Cleanup proof not required yet";
+    }
+  };
+
+  const handleSubmitCleanupEvidence = async (drive: CleanupDrive) => {
+    if (!isVolunteer || cleanupEvidenceActionId === drive.id) {
+      return;
+    }
+
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Permission needed", "Please allow photo access to submit cleanup evidence.");
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.85,
+      });
+
+      if (result.canceled || !result.assets?.[0]) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      const fileName = asset.fileName || `cleanup-evidence-${drive.id}.jpg`;
+      const mimeType = asset.mimeType || "image/jpeg";
+      const formData = new FormData();
+      formData.append("image", {
+        uri: asset.uri,
+        name: fileName,
+        type: mimeType,
+      } as any);
+
+      setCleanupEvidenceActionId(drive.id);
+      showProcessing("Submitting Cleanup Photo", "AI is checking the after-cleanup image...");
+
+      const response = await apiRequest(API_ENDPOINTS.EVENT_CLEANUP_EVIDENCE(drive.id), {
+        method: "POST",
+        body: formData,
+      });
+      const payload = await response.json();
+
+      await fetchCommunityData();
+      Alert.alert(
+        payload.result === "approved" ? "Cleanup verified" : "More cleanup needed",
+        payload.message || "Cleanup evidence submitted."
+      );
+    } catch (error) {
+      console.error("Failed to submit cleanup evidence", error);
+      showError("Cleanup photo failed", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setCleanupEvidenceActionId(null);
+      hideFeedback();
+    }
+  };
+
   const openOrganizationProfile = (organizationId: number) => {
     (navigation as any).navigate("OrganizationProfile", { organizationId });
   };
@@ -434,13 +541,19 @@ const CommunityScreen = () => {
                     </Text>
                   ) : (
                     <View className="space-y-3">
-                      {cleanupDrives
-                        .filter((drive) => drive.status === "recruiting" || drive.status === "active")
+                      {recruitingDrives
                         .slice(0, 5)
                         .map((drive) => {
                           const volunteers = drive.currentVolunteers ?? 0;
                           const slotsLeft = Math.max(drive.maxVolunteers - volunteers, 0);
                           const isJoined = joinedDriveIdSet.has(drive.id);
+                          const isPresent = presentDriveIds.has(drive.id);
+                          const canSubmitCleanupEvidence = isVolunteer
+                            && isJoined
+                            && isPresent
+                            && (drive.status === "active" || drive.status === "completed")
+                            && drive.cleanup_verification_status !== "approved";
+                          const networkLabel = drive.creator?.id ? organizationNetworkById.get(drive.creator.id) : null;
 
                           return (
                             <View key={drive.id} className="p-4 rounded-xl border border-waterbase-200 bg-waterbase-50">
@@ -453,10 +566,19 @@ const CommunityScreen = () => {
                                     {drive.address}
                                   </Text>
                                 </View>
-                                <View className="px-2 py-1 rounded-full bg-enviro-100">
-                                  <Text className="text-xs font-medium text-enviro-800">
-                                    {drive.status}
-                                  </Text>
+                                <View className="items-end gap-1">
+                                  {networkLabel && (
+                                    <View className="px-2 py-1 rounded-full bg-waterbase-100">
+                                      <Text className="text-xs font-medium text-waterbase-800">
+                                        {networkLabel}
+                                      </Text>
+                                    </View>
+                                  )}
+                                  <View className="px-2 py-1 rounded-full bg-enviro-100">
+                                    <Text className="text-xs font-medium text-enviro-800">
+                                      {drive.status}
+                                    </Text>
+                                  </View>
                                 </View>
                               </View>
 
@@ -494,6 +616,14 @@ const CommunityScreen = () => {
                                 </View>
                               )}
 
+                              {(drive.status === "completed" || drive.cleanup_verification_status) && (
+                                <View className="bg-white rounded-lg px-3 py-2 mb-3 border border-waterbase-200">
+                                  <Text className="text-xs font-semibold text-waterbase-800">
+                                    {getCleanupVerificationLabel(drive.cleanup_verification_status)}
+                                  </Text>
+                                </View>
+                              )}
+
                               <View className="flex-row space-x-2">
                                 <TouchableOpacity
                                   className="flex-1 bg-gray-100 rounded-lg py-3 items-center"
@@ -525,6 +655,19 @@ const CommunityScreen = () => {
                                   <Text className="text-white font-semibold ml-2">Scan QR to check in</Text>
                                 </TouchableOpacity>
                               )}
+
+                              {canSubmitCleanupEvidence && (
+                                <TouchableOpacity
+                                  className="mt-2 bg-emerald-600 rounded-lg py-3 items-center flex-row justify-center"
+                                  onPress={() => handleSubmitCleanupEvidence(drive)}
+                                  disabled={cleanupEvidenceActionId === drive.id}
+                                >
+                                  <Ionicons name="camera-outline" size={16} color="#ffffff" />
+                                  <Text className="text-white font-semibold ml-2">
+                                    {cleanupEvidenceActionId === drive.id ? "Submitting Photo..." : "Submit Cleanup Photo"}
+                                  </Text>
+                                </TouchableOpacity>
+                              )}
                             </View>
                           );
                         })}
@@ -551,16 +694,21 @@ const CommunityScreen = () => {
                       <Card key={update.id} className="border-waterbase-200">
                         <CardContent className="p-4">
                           <View className="flex-row items-start mb-3">
-                            <View
-                              className="w-10 h-10 rounded-full items-center justify-center mr-3"
-                              style={{ backgroundColor: `${getUpdateColor(update.update_type)}20` }}
-                            >
-                              <Ionicons
-                                name={getUpdateIcon(update.update_type)}
-                                size={20}
-                                color={getUpdateColor(update.update_type)}
+                            {resolveProfilePhotoUri(update.organization.profile_photo) ? (
+                              <Image
+                                source={{ uri: resolveProfilePhotoUri(update.organization.profile_photo) || "" }}
+                                className="w-10 h-10 rounded-full mr-3 bg-waterbase-50"
                               />
-                            </View>
+                            ) : (
+                              <View
+                                className="w-10 h-10 rounded-full items-center justify-center mr-3"
+                                style={{ backgroundColor: `${getUpdateColor(update.update_type)}20` }}
+                              >
+                                <Text className="text-xs font-semibold" style={{ color: getUpdateColor(update.update_type) }}>
+                                  {getInitials(update.organization.firstName, update.organization.lastName, update.organization.organization)}
+                                </Text>
+                              </View>
+                            )}
                             <View className="flex-1">
                               <TouchableOpacity onPress={() => openOrganizationProfile(update.organization.id)}>
                                 <Text className="font-semibold text-waterbase-950 text-sm">
@@ -661,6 +809,14 @@ const CommunityScreen = () => {
                   <Text className="text-sm text-waterbase-700 mb-1">Duration: {selectedDrive.duration} hours</Text>
                   <Text className="text-sm text-waterbase-700 mb-1">Volunteers: {selectedDrive.currentVolunteers ?? 0}/{selectedDrive.maxVolunteers}</Text>
                   <Text className="text-sm text-waterbase-700 mb-4">Reward points: {selectedDrive.points}</Text>
+                  <View className="bg-waterbase-50 rounded-lg px-3 py-2 mb-4 border border-waterbase-200">
+                    <Text className="text-sm font-semibold text-waterbase-900">
+                      {getCleanupVerificationLabel(selectedDrive.cleanup_verification_status)}
+                    </Text>
+                    {selectedDrive.cleanup_verification_notes && (
+                      <Text className="text-xs text-waterbase-700 mt-1">{selectedDrive.cleanup_verification_notes}</Text>
+                    )}
+                  </View>
 
                   <TouchableOpacity className="bg-waterbase-500 rounded-lg py-3 items-center" onPress={() => setSelectedDrive(null)}>
                     <Text className="text-white font-semibold">Close</Text>

@@ -78,7 +78,7 @@ export const ResearcherActivityLogScreen = () => {
       setIsLoading(true);
 
       // Fetch reports
-      const reportsRes = await apiRequest(`${API_ENDPOINTS.REPORTS}/all`);
+      const reportsRes = await apiRequest(API_ENDPOINTS.REPORTS);
       setReports(await reportsRes.json());
 
       // Fetch trend data

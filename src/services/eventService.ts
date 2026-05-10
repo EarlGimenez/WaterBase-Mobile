@@ -15,6 +15,7 @@ export interface Event {
     points: number;
     badge: string;
     status: 'recruiting' | 'active' | 'completed' | 'cancelled';
+    cleanup_verification_status?: 'not_required' | 'pending' | 'approved' | 'failed';
     user_id: number;
     created_at: string;
     updated_at: string;
@@ -44,6 +45,12 @@ export const eventService = {
 
     async getUserEvents(): Promise<Event[]> {
         const response = await apiRequest(API_ENDPOINTS.USER_EVENTS);
+
+        return response.json();
+    },
+
+    async getCreatedEvents(): Promise<Event[]> {
+        const response = await apiRequest(API_ENDPOINTS.USER_CREATED_EVENTS);
 
         return response.json();
     }
