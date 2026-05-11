@@ -39,6 +39,7 @@ import {
   validateCoordinates, 
   formatCoordinates 
 } from "../utils/location";
+import { toTitleCaseInput } from "../utils/textFormat";
 
 const ReportPollutionScreen = () => {
   const navigation = useNavigation();
@@ -70,7 +71,9 @@ const ReportPollutionScreen = () => {
   const [aiResults, setAiResults] = useState<any>(null);
   const [reportMode, setReportMode] = useState<'ai' | 'manual'>('ai');
   const [csvFile, setCsvFile] = useState<any>(null);
+  const [pdfFile, setPdfFile] = useState<any>(null);
   const [csvUploading, setCsvUploading] = useState(false);
+  const [pdfUploading, setPdfUploading] = useState(false);
   const [mobileGallerySubmissionEnabled, setMobileGallerySubmissionEnabled] = useState(true);
   const [csvResult, setCsvResult] = useState<{
     imported: number;
@@ -419,7 +422,7 @@ const ReportPollutionScreen = () => {
                   setFormData(prev => ({ ...prev, image: '' }));
                   setAiResults(null);
                   setAiScanStatus('idle');
-                  handleCameraCapture();
+                  openCamera();
                 }
               },
               { text: 'Continue Anyway', style: 'destructive' }
@@ -497,7 +500,7 @@ const ReportPollutionScreen = () => {
               setAiResults(null);
               setAiScanStatus('idle');
               // Trigger camera/gallery selection
-              handleCameraCapture();
+              openCamera();
             }
           },
           {
@@ -722,6 +725,48 @@ const ReportPollutionScreen = () => {
     }
   };
 
+  const pickPdfFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf',
+        copyToCacheDirectory: true,
+      });
+      if (!result.canceled && result.assets && result.assets[0]) {
+        setPdfFile(result.assets[0]);
+      }
+    } catch (err) {
+      console.error('Error picking PDF:', err);
+    }
+  };
+
+  const handlePdfUpload = async () => {
+    if (!pdfFile) return;
+    setPdfUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('title', pdfFile.name?.replace(/\.pdf$/i, '') || 'Manual Report PDF');
+      formData.append('description', 'Raw NGO/LGU manual report document uploaded from mobile.');
+      formData.append('pdf_file', {
+        uri: pdfFile.uri,
+        type: pdfFile.mimeType || 'application/pdf',
+        name: pdfFile.name || 'manual-report.pdf',
+      } as any);
+
+      await apiRequest(API_ENDPOINTS.MANUAL_REPORT_DOCUMENTS, {
+        method: 'POST',
+        body: formData,
+      });
+
+      setPdfFile(null);
+      showSuccess('PDF Upload', 'Official PDF was stored for manual review.');
+    } catch (error) {
+      showError('PDF Upload', error instanceof Error ? error.message : 'Failed to upload PDF');
+    } finally {
+      setPdfUploading(false);
+    }
+  };
+
   return (
     <ProtectedContent>
       <SafeAreaView className="flex-1 bg-gradient-to-br from-waterbase-50 to-enviro-50">
@@ -811,6 +856,41 @@ const ReportPollutionScreen = () => {
                     )}
                   </TouchableOpacity>
 
+                  <View className="border-t border-gray-200 pt-4">
+                    <Text className="text-sm font-semibold text-waterbase-950 mb-1">Official PDF Archive</Text>
+                    <Text className="text-xs text-gray-500 mb-3">
+                      Store an NGO/LGU PDF as a raw document for admin review. It will not be parsed into report rows.
+                    </Text>
+
+                    <TouchableOpacity
+                      className="border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50 items-center"
+                      onPress={pickPdfFile}
+                    >
+                      <Ionicons name="document-attach" size={28} color="#9CA3AF" />
+                      <Text className="text-gray-500 mt-2 text-center font-medium">
+                        {pdfFile ? pdfFile.name : 'Select PDF File'}
+                      </Text>
+                      <Text className="text-xs text-gray-400 mt-1 text-center">
+                        Tap to pick a .pdf file
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      className={`w-full rounded-lg py-4 px-6 flex-row items-center justify-center mt-3 ${!pdfFile || pdfUploading ? 'bg-gray-400' : 'bg-waterbase-500'}`}
+                      onPress={handlePdfUpload}
+                      disabled={!pdfFile || pdfUploading}
+                    >
+                      {pdfUploading ? (
+                        <ActivityIndicator size="small" color="white" />
+                      ) : (
+                        <>
+                          <Ionicons name="cloud-upload" size={20} color="white" />
+                          <Text className="text-white font-medium ml-2">Upload PDF for Review</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+
                   {csvResult && (
                     <View className="space-y-3">
                       <View className={`p-3 rounded-lg ${csvResult.errors.length > 0 ? 'bg-yellow-50 border border-yellow-200' : 'bg-green-50 border border-green-200'}`}>
@@ -865,7 +945,7 @@ const ReportPollutionScreen = () => {
                     placeholder="Enter a title for your report"
                     value={formData.title}
                     onChangeText={(text) =>
-                      setFormData({ ...formData, title: text })
+                      setFormData({ ...formData, title: toTitleCaseInput(text) })
                     }
                     className="border border-gray-300 rounded-lg px-3 py-3 text-gray-900 bg-white"
                   />

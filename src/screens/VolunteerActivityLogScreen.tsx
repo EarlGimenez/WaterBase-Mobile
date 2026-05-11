@@ -236,6 +236,12 @@ export const VolunteerActivityLogScreen = () => {
                 </View>
               </View>
             </View>
+            {event.pivot?.task_note ? (
+              <View className="bg-waterbase-50 p-3 rounded-lg mb-3">
+                <Text className="text-xs font-semibold text-waterbase-800">Assigned Task</Text>
+                <Text className="text-sm text-waterbase-700 mt-1">{event.pivot.task_note}</Text>
+              </View>
+            ) : null}
             <View className="flex-row gap-2 pt-3 border-t border-gray-200">
               <View className="flex-1 items-center">
                 <View className="flex-row items-center justify-center gap-1 mb-1">

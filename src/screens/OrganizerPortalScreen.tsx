@@ -18,6 +18,7 @@ import { API_ENDPOINTS, apiRequest } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useFeedback } from "../contexts/FeedbackContext";
 import { WBSICalculator, type Report } from "../utils/wbsiCalculator";
+import { toTitleCaseInput } from "../utils/textFormat";
 
 interface MobileReport extends Report {
   report_group_id?: number;
@@ -58,7 +59,7 @@ interface Volunteer {
   joinDate: string;
   badges: string[];
   rank: string;
-  currentEvents: any[];
+  currentEvents: Array<{ id: number; title: string; task_note?: string | null }>;
 }
 
 interface JoinRequestRecord {
@@ -144,6 +145,10 @@ const OrganizerPortalScreen = () => {
   });
   const [eventError, setEventError] = useState("");
   const [showEditEvent, setShowEditEvent] = useState(false);
+  const [taskVolunteer, setTaskVolunteer] = useState<Volunteer | null>(null);
+  const [taskEventId, setTaskEventId] = useState<number | null>(null);
+  const [taskNote, setTaskNote] = useState("");
+  const [isSavingTaskNote, setIsSavingTaskNote] = useState(false);
   const [isEditingEvent, setIsEditingEvent] = useState(false);
   const [editEventId, setEditEventId] = useState<number | null>(null);
   const [editEvent, setEditEvent] = useState({
@@ -424,6 +429,11 @@ const OrganizerPortalScreen = () => {
           volunteerRecord.totalEvents++;
           volunteerRecord.totalPoints += event.points || 50;
           volunteerRecord.totalHours += parseInt(event.duration) || 3;
+          volunteerRecord.currentEvents.push({
+            id: event.id,
+            title: event.title,
+            task_note: volunteer.task_note ?? volunteer.pivot?.task_note ?? null,
+          });
 
           const eventDate = new Date(event.date);
           const now = new Date();
@@ -824,6 +834,35 @@ const OrganizerPortalScreen = () => {
       showError("Unable to message volunteers", error instanceof Error ? error.message : "Please try again.");
     } finally {
       setIsSendingMessage(false);
+    }
+  };
+
+  const openTaskNoteModal = (volunteer: Volunteer) => {
+    const event = volunteer.currentEvents[0];
+    if (!event) return;
+
+    setTaskVolunteer(volunteer);
+    setTaskEventId(event.id);
+    setTaskNote(event.task_note || "");
+  };
+
+  const handleSaveTaskNote = async () => {
+    if (!taskVolunteer || !taskEventId) return;
+    setIsSavingTaskNote(true);
+    try {
+      await apiRequest(API_ENDPOINTS.EVENT_VOLUNTEER_TASK_NOTE(taskEventId, taskVolunteer.id), {
+        method: "PATCH",
+        body: JSON.stringify({ task_note: taskNote.trim() || null }),
+      });
+      setTaskVolunteer(null);
+      setTaskEventId(null);
+      setTaskNote("");
+      await handleRefresh();
+      showSuccess("Task Updated", "Volunteer task note was saved.");
+    } catch (error) {
+      showError("Unable to save task", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setIsSavingTaskNote(false);
     }
   };
 
@@ -1315,6 +1354,19 @@ const OrganizerPortalScreen = () => {
                         </Text>
                         <Text className="text-xs text-gray-600">{volunteer.lastActivity}</Text>
                       </View>
+                      {volunteer.currentEvents[0]?.task_note ? (
+                        <Text className="text-xs text-waterbase-700 mt-2">
+                          Task: {volunteer.currentEvents[0].task_note}
+                        </Text>
+                      ) : null}
+                      <TouchableOpacity
+                        onPress={() => openTaskNoteModal(volunteer)}
+                        className="mt-3 px-3 py-2 rounded-lg bg-waterbase-100 self-start"
+                      >
+                        <Text className="text-xs text-waterbase-800 font-medium">
+                          {volunteer.currentEvents[0]?.task_note ? "Edit Task" : "Assign Task"}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                   ))
                 )}
@@ -1524,7 +1576,7 @@ const OrganizerPortalScreen = () => {
                       className="border border-gray-300 rounded-lg px-3 py-2"
                       placeholder={generateDefaultTitle() || "e.g., Beach Cleanup at Manila Bay"}
                       value={newEvent.title}
-                      onChangeText={(text) => setNewEvent({ ...newEvent, title: text })}
+                      onChangeText={(text) => setNewEvent({ ...newEvent, title: toTitleCaseInput(text) })}
                     />
                     {!newEvent.title && generateDefaultTitle() ? (
                       <Text className="text-xs text-gray-500 mt-1">Suggested: {generateDefaultTitle()}</Text>
@@ -1608,7 +1660,7 @@ const OrganizerPortalScreen = () => {
                         className="border border-gray-300 rounded-lg px-3 py-2"
                         placeholder="Environmental Volunteer"
                         value={newEvent.rewardBadge}
-                        onChangeText={(text) => setNewEvent({ ...newEvent, rewardBadge: text })}
+                        onChangeText={(text) => setNewEvent({ ...newEvent, rewardBadge: toTitleCaseInput(text) })}
                       />
                     </View>
                   </View>
@@ -1657,7 +1709,7 @@ const OrganizerPortalScreen = () => {
                       className="border border-gray-300 rounded-lg px-3 py-2"
                       placeholder="e.g., Beach Cleanup at Manila Bay"
                       value={editEvent.title}
-                      onChangeText={(text) => setEditEvent({ ...editEvent, title: text })}
+                      onChangeText={(text) => setEditEvent({ ...editEvent, title: toTitleCaseInput(text) })}
                     />
                   </View>
 
@@ -1734,7 +1786,7 @@ const OrganizerPortalScreen = () => {
                         className="border border-gray-300 rounded-lg px-3 py-2"
                         placeholder="Environmental Volunteer"
                         value={editEvent.rewardBadge}
-                        onChangeText={(text) => setEditEvent({ ...editEvent, rewardBadge: text })}
+                        onChangeText={(text) => setEditEvent({ ...editEvent, rewardBadge: toTitleCaseInput(text) })}
                       />
                     </View>
                   </View>
@@ -1919,6 +1971,28 @@ const OrganizerPortalScreen = () => {
               )}
             </ScrollView>
           </SafeAreaView>
+        </Modal>
+
+        <Modal visible={!!taskVolunteer} transparent animationType="fade" onRequestClose={() => setTaskVolunteer(null)}>
+          <View className="flex-1 bg-black/60 justify-center p-4">
+            <View className="bg-white rounded-2xl p-5">
+              <Text className="text-lg font-semibold text-waterbase-950 mb-1">Volunteer Task</Text>
+              <Text className="text-sm text-gray-600 mb-4">
+                {taskVolunteer ? `${taskVolunteer.firstName} ${taskVolunteer.lastName}` : ""}
+              </Text>
+              <TextInput
+                value={taskNote}
+                onChangeText={setTaskNote}
+                placeholder="Example: Bring sacks and cover shoreline section A"
+                multiline
+                className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-3 text-gray-900 min-h-24 mb-4"
+              />
+              <View className="space-y-2">
+                <Button title={isSavingTaskNote ? "Saving..." : "Save Task"} onPress={handleSaveTaskNote} disabled={isSavingTaskNote} />
+                <Button title="Cancel" onPress={() => setTaskVolunteer(null)} variant="outline" disabled={isSavingTaskNote} />
+              </View>
+            </View>
+          </View>
         </Modal>
 
         {/* QR Code Display Modal */}

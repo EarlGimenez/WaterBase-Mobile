@@ -55,6 +55,7 @@ interface Report {
   user?: {
     firstName: string;
     lastName: string;
+    organization?: string | null;
   };
 }
 
@@ -198,6 +199,10 @@ const MapViewScreen = () => {
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [filterType, setFilterType] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterRegion, setFilterRegion] = useState("");
+  const [filterOrganization, setFilterOrganization] = useState("");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [filteredReports, setFilteredReports] = useState<Report[]>([]);
 
@@ -222,8 +227,8 @@ const MapViewScreen = () => {
   // UI state
   const [showFilters, setShowFilters] = useState(false);
   const [currentLocation, setCurrentLocation] = useState({
-    latitude: 14.5995,
-    longitude: 120.9842,
+    latitude: 10.3157,
+    longitude: 123.8854,
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   });
@@ -332,6 +337,27 @@ const MapViewScreen = () => {
       filtered = filtered.filter(r => r.status === filterStatus);
     }
 
+    if (filterRegion.trim()) {
+      const region = filterRegion.trim().toLowerCase();
+      filtered = filtered.filter(r => r.address.toLowerCase().includes(region));
+    }
+
+    if (filterOrganization.trim()) {
+      const organization = filterOrganization.trim().toLowerCase();
+      filtered = filtered.filter(r => (r.user?.organization || "").toLowerCase().includes(organization));
+    }
+
+    if (filterDateFrom) {
+      const from = new Date(filterDateFrom);
+      filtered = filtered.filter(r => new Date(r.created_at) >= from);
+    }
+
+    if (filterDateTo) {
+      const to = new Date(filterDateTo);
+      to.setHours(23, 59, 59, 999);
+      filtered = filtered.filter(r => new Date(r.created_at) <= to);
+    }
+
     if (searchQuery) {
       filtered = filtered.filter(r =>
         r.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -341,7 +367,7 @@ const MapViewScreen = () => {
     }
 
     setFilteredReports(filtered);
-  }, [reports, filterType, filterStatus, searchQuery]);
+  }, [reports, filterType, filterStatus, filterRegion, filterOrganization, filterDateFrom, filterDateTo, searchQuery]);
 
   // Calculate WBSI when selectedReport changes
   useEffect(() => {
@@ -1001,12 +1027,54 @@ const MapViewScreen = () => {
                   </View>
                 </View>
 
+                <View className="mb-4">
+                  <Text className="text-sm font-medium text-gray-700 mb-2">Region / Address</Text>
+                  <TextInput
+                    value={filterRegion}
+                    onChangeText={setFilterRegion}
+                    placeholder="Example: Pasig, Laguna, Manila"
+                    className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-3 text-gray-900"
+                  />
+                </View>
+
+                <View className="mb-4">
+                  <Text className="text-sm font-medium text-gray-700 mb-2">Organization</Text>
+                  <TextInput
+                    value={filterOrganization}
+                    onChangeText={setFilterOrganization}
+                    placeholder="Example: City ENRO"
+                    className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-3 text-gray-900"
+                  />
+                </View>
+
+                <View className="mb-4">
+                  <Text className="text-sm font-medium text-gray-700 mb-2">Date Range</Text>
+                  <View className="flex-row space-x-2">
+                    <TextInput
+                      value={filterDateFrom}
+                      onChangeText={setFilterDateFrom}
+                      placeholder="YYYY-MM-DD"
+                      className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-3 text-gray-900"
+                    />
+                    <TextInput
+                      value={filterDateTo}
+                      onChangeText={setFilterDateTo}
+                      placeholder="YYYY-MM-DD"
+                      className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-3 text-gray-900"
+                    />
+                  </View>
+                </View>
+
                 {/* Clear Filters */}
                 <Button
                   title="Clear All Filters"
                   onPress={() => {
                     setFilterType("all");
                     setFilterStatus("all");
+                    setFilterRegion("");
+                    setFilterOrganization("");
+                    setFilterDateFrom("");
+                    setFilterDateTo("");
                     setSearchQuery("");
                     setShowFilters(false);
                   }}

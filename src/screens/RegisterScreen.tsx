@@ -16,6 +16,7 @@ import { SearchableLocationSelect } from "../components/ui/SearchableLocationSel
 import { OrganizationSelect } from "../components/ui/OrganizationSelect";
 import Navigation from "../components/Navigation";
 import { API_ENDPOINTS, apiRequest } from "../config/api";
+import { toTitleCaseInput } from "../utils/textFormat";
 
 const RegisterScreen = () => {
   const navigation = useNavigation();
@@ -240,7 +241,7 @@ const RegisterScreen = () => {
                     </Text>
                     <TextInput
                       value={formData.firstName}
-                      onChangeText={(text) => setFormData({ ...formData, firstName: text })}
+                      onChangeText={(text) => setFormData({ ...formData, firstName: toTitleCaseInput(text) })}
                       placeholder="Enter first name"
                       editable={!isLoading}
                       className="border border-gray-300 rounded-lg px-3 py-3 text-waterbase-900 bg-white"
@@ -254,7 +255,7 @@ const RegisterScreen = () => {
                     </Text>
                     <TextInput
                       value={formData.lastName}
-                      onChangeText={(text) => setFormData({ ...formData, lastName: text })}
+                      onChangeText={(text) => setFormData({ ...formData, lastName: toTitleCaseInput(text) })}
                       placeholder="Enter last name"
                       editable={!isLoading}
                       className="border border-gray-300 rounded-lg px-3 py-3 text-waterbase-900 bg-white"

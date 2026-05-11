@@ -27,10 +27,11 @@ export const SeverityDistributionChart: React.FC<SeverityDistributionChartProps>
     const { bar_data, kde_data, config, outliers } = chartData;
     const [activeTab, setActiveTab] = useState("overview");
     const [isExpanded, setIsExpanded] = useState(false);
+    const isSensorDriven = config.source === 'sensor';
 
     // Decide on displayed WBSI: Use shrunk if small n_reports
-    const useShrunk = config.n_reports < 10;  // Threshold for small samples
-    const displayedWBSI = useShrunk ? config.wbsi_display_shrunk : config.wbsi_display;
+    const useShrunk = !isSensorDriven && config.n_reports < 10;  // Threshold for small samples
+    const displayedWBSI = useShrunk ? (config.wbsi_display_shrunk ?? config.wbsi_display) : config.wbsi_display;
 
     // Get comprehensive analysis
     const interpretation = getWBSIInterpretation(displayedWBSI, config.consensus_percentage / 100, config.n_reports);
@@ -116,6 +117,15 @@ export const SeverityDistributionChart: React.FC<SeverityDistributionChartProps>
     );
 
     const renderDistributionBars = () => {
+        if (bar_data.length === 0) {
+            return (
+                <View className="space-y-2">
+                    <Text className="text-sm font-medium text-gray-700 mb-3">Report Distribution</Text>
+                    <Text className="text-xs text-gray-500">No report distribution available for this sensor-only area.</Text>
+                </View>
+            );
+        }
+
         const maxCount = Math.max(...bar_data.map((d: any) => d.count));
 
         return (
@@ -172,10 +182,10 @@ export const SeverityDistributionChart: React.FC<SeverityDistributionChartProps>
                             variant="outline"
                             className={`text-xs ${severityDescription.color}`}
                         >
-                            WBSI: {displayedWBSI}%
+                            {isSensorDriven ? `Sensor Score: ${displayedWBSI}%` : `WBSI: ${displayedWBSI}%`}
                         </Badge>
                         <Text className="text-xs text-gray-600">
-                            {config.n_reports} reports, {config.consensus_percentage}% consensus
+                            {isSensorDriven ? 'sensor-driven' : `${config.n_reports} reports, ${config.consensus_percentage}% consensus`}
                         </Text>
                     </View>
                     {useShrunk && (
@@ -243,7 +253,7 @@ export const SeverityDistributionChart: React.FC<SeverityDistributionChartProps>
                                             {summaryReport.overall}
                                         </Text>
                                         <Text className="text-xs text-gray-600">
-                                            {summaryReport.reliability}
+                                            {isSensorDriven ? 'Assessment is based on the latest sensor telemetry for this location.' : summaryReport.reliability}
                                         </Text>
                                     </View>
                                 </View>

@@ -245,6 +245,7 @@ const AdminModerationScreen: React.FC = () => {
   const [wbsiSensorAssignmentRadiusM, setWbsiSensorAssignmentRadiusM] = useState(1000);
   const [wbsiSensorWeight, setWbsiSensorWeight] = useState(0.6);
   const [wbsiReportWeight, setWbsiReportWeight] = useState(0.4);
+  const [wbsiKdeDistributionEnabled, setWbsiKdeDistributionEnabled] = useState(false);
   const [wbsiFreshwaterPhMin, setWbsiFreshwaterPhMin] = useState(6.5);
   const [wbsiFreshwaterPhMax, setWbsiFreshwaterPhMax] = useState(8.5);
   const [wbsiFreshwaterTurbidityNtu, setWbsiFreshwaterTurbidityNtu] = useState(5);
@@ -373,6 +374,7 @@ const AdminModerationScreen: React.FC = () => {
         setWbsiSensorAssignmentRadiusM(Number(data.wbsi_sensor_assignment_radius_m ?? 1000));
         setWbsiSensorWeight(Number(data.wbsi_sensor_weight ?? 0.6));
         setWbsiReportWeight(Number(data.wbsi_report_weight ?? 0.4));
+        setWbsiKdeDistributionEnabled(Boolean(data.wbsi_kde_distribution_enabled));
         setWbsiFreshwaterPhMin(Number(data.wbsi_freshwater_ph_min ?? 6.5));
         setWbsiFreshwaterPhMax(Number(data.wbsi_freshwater_ph_max ?? 8.5));
         setWbsiFreshwaterTurbidityNtu(Number(data.wbsi_freshwater_turbidity_ntu ?? 5));
@@ -533,6 +535,7 @@ const AdminModerationScreen: React.FC = () => {
           wbsi_sensor_assignment_radius_m: wbsiSensorAssignmentRadiusM,
           wbsi_sensor_weight: wbsiSensorWeight,
           wbsi_report_weight: wbsiReportWeight,
+          wbsi_kde_distribution_enabled: wbsiKdeDistributionEnabled,
           wbsi_freshwater_ph_min: wbsiFreshwaterPhMin,
           wbsi_freshwater_ph_max: wbsiFreshwaterPhMax,
           wbsi_freshwater_turbidity_ntu: wbsiFreshwaterTurbidityNtu,
@@ -1113,6 +1116,12 @@ const AdminModerationScreen: React.FC = () => {
               {renderNumberInput("Sensor Weight", wbsiSensorWeight, setWbsiSensorWeight, "0.60")}
               {renderNumberInput("Report Weight", wbsiReportWeight, setWbsiReportWeight, "0.40")}
             </View>
+            {renderSettingToggle(
+              "KDE Distribution / Legacy Small-Sample Analysis",
+              "Include KDE small-sample shrinkage in report distribution for the Pollution Analysis card.",
+              wbsiKdeDistributionEnabled,
+              setWbsiKdeDistributionEnabled
+            )}
           </View>
 
           <View className="border-t border-gray-200 pt-4 mt-2">

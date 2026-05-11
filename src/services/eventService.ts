@@ -26,6 +26,9 @@ export interface Event {
         role: string;
     };
     attendees?: any[];
+    pivot?: {
+        task_note?: string | null;
+    };
 }
 
 export const eventService = {

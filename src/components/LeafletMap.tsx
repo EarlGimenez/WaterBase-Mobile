@@ -42,7 +42,7 @@ const LeafletMap: React.FC<LeafletMapProps> = ({
   onReportPress,
   onSensorPress,
   onMapPress,
-  center = { latitude: 14.5995, longitude: 120.9842 },
+  center = { latitude: 10.3157, longitude: 123.8854 },
   style,
 }) => {
   const getSeverityColor = (severity: string) => {
