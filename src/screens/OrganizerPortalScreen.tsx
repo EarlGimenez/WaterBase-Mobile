@@ -2001,7 +2001,7 @@ const OrganizerPortalScreen = () => {
             <View className="bg-white rounded-2xl p-6 w-full max-w-sm">
               <Text className="text-xl font-bold text-waterbase-950 mb-2 text-center">Event QR Code</Text>
               <Text className="text-sm text-gray-600 mb-4 text-center">
-                Volunteers can scan this code to check in for "{qrEvent?.title}"
+                Volunteers must join this event before scanning.
               </Text>
 
               {isGeneratingQR ? (
@@ -2010,12 +2010,33 @@ const OrganizerPortalScreen = () => {
                   <Text className="text-gray-500 mt-2">Generating QR code...</Text>
                 </View>
               ) : qrDataUrl ? (
-                <View className="bg-white p-4 rounded-xl border-2 border-waterbase-200 mb-4 items-center justify-center mx-auto">
+                <View className="bg-white rounded-2xl border-2 border-waterbase-200 mb-4 overflow-hidden mx-auto w-full">
+                  <View className="bg-waterbase-600 px-4 py-3 items-center">
+                    <Text className="text-white text-base font-bold">WaterBasePH</Text>
+                    <Text className="text-white text-xs font-semibold">QR Attendance</Text>
+                  </View>
+                  <View className="px-4 pt-4 items-center">
+                    <Text className="text-waterbase-950 text-lg font-bold text-center" numberOfLines={2}>
+                      {qrEvent?.title || "Cleanup Event"}
+                    </Text>
+                    <View className="flex-row items-center mt-2 px-2">
+                      <Ionicons name="location-outline" size={15} color="#64748b" />
+                      <Text className="text-gray-600 text-xs text-center ml-1 flex-1" numberOfLines={2}>
+                        {qrEvent?.address || "Cleanup location"}
+                      </Text>
+                    </View>
+                  </View>
+                  <View className="p-4 items-center justify-center">
                   <Image
                     source={{ uri: qrDataUrl }}
                     style={{ width: 280, height: 280 }}
                     resizeMode="contain"
                   />
+                  </View>
+                  <View className="px-4 pb-4 items-center">
+                    <Text className="text-waterbase-700 text-xs font-bold tracking-wide">SCAN TO CHECK IN</Text>
+                    <Text className="text-gray-500 text-xs mt-1">Joined volunteers only</Text>
+                  </View>
                 </View>
               ) : (
                 <View className="w-64 h-64 bg-red-100 rounded-xl flex items-center justify-center mx-auto mb-4">
@@ -2026,7 +2047,7 @@ const OrganizerPortalScreen = () => {
               <View className="bg-waterbase-50 px-4 py-3 rounded-lg mb-4 flex-row items-center">
                 <Ionicons name="people" size={16} color="#0369a1" />
                 <Text className="text-sm text-waterbase-700 ml-2">
-                  {qrEvent?.currentVolunteers || 0} volunteer{(qrEvent?.currentVolunteers || 0) !== 1 ? 's' : ''} checked in
+                  {qrEvent?.currentVolunteers || 0} volunteer{(qrEvent?.currentVolunteers || 0) !== 1 ? 's' : ''} joined
                 </Text>
               </View>
 

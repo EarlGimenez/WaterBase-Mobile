@@ -13,7 +13,7 @@ const IP_POOL = [
   "10.231.38.15",
   "100.127.78.24"
 ];
-const CHOOSE_IP = 0;
+const CHOOSE_IP = 2;
 
 const API_CONFIG = {
   BASE_URL: isDev 
@@ -168,8 +168,8 @@ export const apiRequest = async (endpoint: string, options: RequestInit = {}) =>
       let message = `HTTP ${response.status}`;
       try {
         const errorJson = JSON.parse(errorText);
-        if (errorJson.message) {
-          message = errorJson.message;
+        if (errorJson.details || errorJson.message) {
+          message = errorJson.details || errorJson.message;
         }
       } catch {
         // Not JSON, keep status-based message

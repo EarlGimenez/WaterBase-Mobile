@@ -56,16 +56,18 @@ const QRScannerScreen = () => {
           errorDetails,
           [{ text: "Try Again", onPress: () => setScanned(false) }]
         );
-        setScanned(false);
       }
     } catch (error) {
       console.error("QR scan error:", error);
+      const message = error instanceof Error && error.message
+        ? error.message
+        : "Something went wrong while processing the QR code. Please check your internet connection and try again.";
+
       Alert.alert(
-        "Error",
-        "Something went wrong while processing the QR code. Please check your internet connection and try again.",
+        "Check-in Failed",
+        message,
         [{ text: "Try Again", onPress: () => setScanned(false) }]
       );
-      setScanned(false);
     } finally {
       setIsProcessing(false);
     }
@@ -76,7 +78,12 @@ const QRScannerScreen = () => {
 
     const match = data.match(/waterbase:\/\/event\/(\d+)\/attend/);
     if (!match) {
-      Alert.alert("Invalid QR Code", "This QR code is not a valid WaterbasePH event code.");
+      setScanned(true);
+      Alert.alert(
+        "Invalid QR Code",
+        "This QR code is not a valid WaterbasePH event code.",
+        [{ text: "Try Again", onPress: () => setScanned(false) }]
+      );
       return;
     }
 

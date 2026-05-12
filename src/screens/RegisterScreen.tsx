@@ -1,11 +1,10 @@
 import React, { useState } from "react";
-import { ScrollView, View, Text, TextInput, TouchableOpacity, Alert } from "react-native";
+import { ScrollView, View, Text, TextInput, TouchableOpacity, Alert, Image, Modal } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import * as DocumentPicker from "expo-document-picker";
-import { Button } from "../components/ui/Button";
 import {
   Card,
   CardHeader,
@@ -15,8 +14,88 @@ import {
 import { SearchableLocationSelect } from "../components/ui/SearchableLocationSelect";
 import { OrganizationSelect } from "../components/ui/OrganizationSelect";
 import Navigation from "../components/Navigation";
-import { API_ENDPOINTS, apiRequest } from "../config/api";
+import { API_ENDPOINTS, apiRequest, getImageUrl } from "../config/api";
 import { toTitleCaseInput } from "../utils/textFormat";
+
+const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024;
+const ACCEPTED_DOCUMENT_MIME_TYPES = ["application/pdf", "image/png", "image/jpeg", "image/jpg"];
+const ACCEPTED_DOCUMENT_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png"];
+const DOCUMENT_TEMPLATE_PATHS = {
+  ngo: {
+    sec_certificate: "/storage/document-templates/ngo/NGO Certificate of Incorporation.png",
+    articles_bylaws: "/storage/document-templates/ngo/NGO SEC Business Registration.jpg",
+    representative_authorization: "/storage/document-templates/ngo/NGO Authorization Letter.png",
+  },
+  lgu: {
+    representative_id: "/storage/document-templates/lgu/LGU Official ID.jpg",
+    designation_letter: "/storage/document-templates/lgu/LGU Authorization Letter.png",
+    endorsement_letter: "/storage/document-templates/lgu/LGU Endorsement Letter.png",
+  },
+  researcher: {
+    institution_id: "/storage/document-templates/researcher/Researcher School ID.jpg",
+    endorsement_letter: "/storage/document-templates/researcher/Researcher Authorization Letter.png",
+    research_proof: "/storage/document-templates/researcher/Researcher Ethics Clearance.png",
+  },
+} as const;
+
+const ROLE_DOCUMENTS = {
+  ngo: [
+    {
+      key: "sec_certificate",
+      name: "SEC Certificate of Registration / Incorporation",
+      description: "Proves the NGO is legally registered with the SEC.",
+    },
+    {
+      key: "articles_bylaws",
+      name: "Articles of Incorporation and By-Laws",
+      description: "Shows the organization's purpose, structure, and operating rules.",
+    },
+    {
+      key: "representative_authorization",
+      name: "Representative Authorization",
+      description: "Confirms the registrant is authorized to represent the organization.",
+    },
+  ],
+  lgu: [
+    {
+      key: "representative_id",
+      name: "Official LGU Employee ID or Government ID",
+      description: "Verifies the representative's identity and LGU affiliation.",
+    },
+    {
+      key: "designation_letter",
+      name: "Authorization, Office Order, or Designation Letter",
+      description: "Confirms the LGU assigned the representative to register.",
+    },
+    {
+      key: "endorsement_letter",
+      name: "Official Request or Endorsement Letter",
+      description: "Shows official LGU intent using LGU letterhead.",
+    },
+  ],
+  researcher: [
+    {
+      key: "institution_id",
+      name: "Valid School, Institutional, or Employee ID",
+      description: "Verifies the researcher's institutional identity.",
+    },
+    {
+      key: "endorsement_letter",
+      name: "Endorsement Letter",
+      description: "Confirms support from an adviser, department, institution, or research office.",
+    },
+    {
+      key: "research_proof",
+      name: "Research Proposal, Ethics Clearance, or Affiliation Proof",
+      description: "Shows the research purpose or formal research affiliation.",
+    },
+  ],
+} as const;
+
+type VerificationRole = keyof typeof ROLE_DOCUMENTS;
+type RegistrationDocument = typeof ROLE_DOCUMENTS[VerificationRole][number];
+type DocumentFiles = Partial<Record<string, DocumentPicker.DocumentPickerAsset>>;
+type DocumentErrors = Partial<Record<string, string>>;
 
 const RegisterScreen = () => {
   const navigation = useNavigation();
@@ -34,7 +113,9 @@ const RegisterScreen = () => {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [organizationProofFile, setOrganizationProofFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
+  const [documentFiles, setDocumentFiles] = useState<DocumentFiles>({});
+  const [documentErrors, setDocumentErrors] = useState<DocumentErrors>({});
+  const [selectedTemplateDocument, setSelectedTemplateDocument] = useState<RegistrationDocument | null>(null);
 
   const roles = [
     { value: "volunteer", label: "Volunteer", description: "Individual community volunteer" },
@@ -47,14 +128,57 @@ const RegisterScreen = () => {
     return ['ngo', 'lgu'].includes(role);
   };
 
-  const pickProofDocument = async () => {
+  const getRoleDocuments = (role: string): readonly RegistrationDocument[] => {
+    return ROLE_DOCUMENTS[role as VerificationRole] ?? [];
+  };
+
+  const getTemplatePath = (role: string, documentKey?: string) => {
+    if (!documentKey) return null;
+
+    return DOCUMENT_TEMPLATE_PATHS[role as VerificationRole]?.[documentKey as keyof typeof DOCUMENT_TEMPLATE_PATHS[VerificationRole]] ?? null;
+  };
+
+  const requiresRegistrationDocuments = getRoleDocuments(formData.role).length > 0;
+
+  const validateDocumentFile = (file: DocumentPicker.DocumentPickerAsset) => {
+    const lowerName = file.name.toLowerCase();
+    const hasValidType = !!file.mimeType && ACCEPTED_DOCUMENT_MIME_TYPES.includes(file.mimeType);
+    const hasValidExtension = ACCEPTED_DOCUMENT_EXTENSIONS.some((extension) => lowerName.endsWith(extension));
+
+    if (!hasValidType && !hasValidExtension) {
+      return "Invalid file format. Upload a PDF, JPG, JPEG, or PNG file.";
+    }
+
+    if (file.size && file.size > MAX_DOCUMENT_SIZE_BYTES) {
+      return "File is too large. Maximum allowed size is 10MB.";
+    }
+
+    return "";
+  };
+
+  const pickRegistrationDocument = async (documentKey: string) => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ["application/pdf", "image/png", "image/jpeg", "image/jpg"],
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setOrganizationProofFile(result.assets[0]);
+        const file = result.assets[0];
+        const validationError = validateDocumentFile(file);
+        setDocumentErrors((current) => ({ ...current, [documentKey]: validationError }));
+
+        if (validationError) {
+          setDocumentFiles((current) => {
+            const next = { ...current };
+            delete next[documentKey];
+            return next;
+          });
+          setError(validationError);
+          return;
+        }
+
+        setDocumentFiles((current) => ({ ...current, [documentKey]: file }));
+        setError("");
       }
     } catch (err) {
       console.error("Document picker error:", err);
@@ -94,9 +218,18 @@ const RegisterScreen = () => {
       return;
     }
 
-    if (shouldShowOrganizationFields(formData.role) && !organizationProofFile) {
-      setError("Proof of legitimacy document is required for organization accounts.");
-      return;
+    if (requiresRegistrationDocuments) {
+      const missingDocument = getRoleDocuments(formData.role).find((document) => !documentFiles[document.key]);
+      if (missingDocument) {
+        setError(`${missingDocument.name} is required for ${formData.role.toUpperCase()} registration.`);
+        return;
+      }
+
+      const invalidDocument = getRoleDocuments(formData.role).find((document) => documentErrors[document.key]);
+      if (invalidDocument) {
+        setError(documentErrors[invalidDocument.key] || "Please fix document upload errors before continuing.");
+        return;
+      }
     }
 
     // Phone number validation
@@ -111,7 +244,7 @@ const RegisterScreen = () => {
     try {
       let requestBody: FormData | string;
 
-      if (shouldShowOrganizationFields(formData.role) && organizationProofFile) {
+      if (requiresRegistrationDocuments || shouldShowOrganizationFields(formData.role)) {
         const formDataBody = new FormData();
         formDataBody.append("firstName", formData.firstName);
         formDataBody.append("lastName", formData.lastName);
@@ -120,13 +253,20 @@ const RegisterScreen = () => {
         formDataBody.append("password_confirmation", formData.confirmPassword);
         formDataBody.append("phoneNumber", formData.phoneNumber);
         formDataBody.append("role", formData.role);
-        formDataBody.append("organization", formData.organization);
-        formDataBody.append("areaOfResponsibility", formData.areaOfResponsibility);
-        formDataBody.append("organization_proof_document", {
-          uri: organizationProofFile.uri,
-          name: organizationProofFile.name,
-          type: organizationProofFile.mimeType || "application/octet-stream",
-        } as any);
+        if (shouldShowOrganizationFields(formData.role)) {
+          formDataBody.append("organization", formData.organization);
+          formDataBody.append("areaOfResponsibility", formData.areaOfResponsibility);
+        }
+        getRoleDocuments(formData.role).forEach((document) => {
+          const file = documentFiles[document.key];
+          if (file) {
+            formDataBody.append(`registration_documents[${document.key}]`, {
+              uri: file.uri,
+              name: file.name,
+              type: file.mimeType || "application/octet-stream",
+            } as any);
+          }
+        });
         requestBody = formDataBody;
       } else {
         requestBody = JSON.stringify({
@@ -166,11 +306,10 @@ const RegisterScreen = () => {
       const data = await response.json();
       console.log("Registration successful:", data);
 
-      const isOrg = shouldShowOrganizationFields(formData.role);
       Alert.alert(
         "Registration Successful",
-        isOrg
-          ? "Your account has been created successfully! Your organization account is pending admin review. You will be able to log in once approved."
+        requiresRegistrationDocuments
+          ? "Your account has been created successfully and is pending admin review. You will be able to log in once approved."
           : "Your account has been created successfully! Please check your email for verification.",
         [
           {
@@ -342,7 +481,11 @@ const RegisterScreen = () => {
                   {roles.map((role) => (
                     <TouchableOpacity
                       key={role.value}
-                      onPress={() => setFormData({ ...formData, role: role.value })}
+                      onPress={() => {
+                        setFormData({ ...formData, role: role.value });
+                        setDocumentFiles({});
+                        setDocumentErrors({});
+                      }}
                       disabled={isLoading}
                       className={`border rounded-lg px-4 py-3 ${
                         formData.role === role.value
@@ -367,9 +510,9 @@ const RegisterScreen = () => {
                           <Text className="text-waterbase-600 text-sm mt-1">
                             {role.description}
                           </Text>
-                          {shouldShowOrganizationFields(role.value) && (
+                          {(shouldShowOrganizationFields(role.value) || getRoleDocuments(role.value).length > 0) && (
                             <Text className="text-waterbase-500 text-xs mt-1">
-                              • Requires organization and area of responsibility
+                              Requires verification documents
                             </Text>
                           )}
                         </View>
@@ -395,38 +538,6 @@ const RegisterScreen = () => {
 
                     <View className="mb-4">
                       <Text className="text-sm font-medium text-waterbase-700 mb-2">
-                        Proof of Legitimacy *
-                      </Text>
-                      <TouchableOpacity
-                        onPress={pickProofDocument}
-                        disabled={isLoading}
-                        className="border border-gray-300 rounded-lg px-3 py-3 bg-white flex-row items-center justify-between"
-                      >
-                        <Text
-                          className={
-                            organizationProofFile
-                              ? "text-waterbase-900 flex-1 mr-2"
-                              : "text-gray-500 flex-1 mr-2"
-                          }
-                          numberOfLines={1}
-                        >
-                          {organizationProofFile
-                            ? organizationProofFile.name
-                            : "Tap to select a document (PDF, PNG, JPG)"}
-                        </Text>
-                        <Ionicons
-                          name={organizationProofFile ? "document-text" : "attach"}
-                          size={20}
-                          color="#6B7280"
-                        />
-                      </TouchableOpacity>
-                      <Text className="text-xs text-waterbase-500 mt-1">
-                        Upload SEC registration, government accreditation, or equivalent proof (max 10MB).
-                      </Text>
-                    </View>
-
-                    <View className="mb-4">
-                      <Text className="text-sm font-medium text-waterbase-700 mb-2">
                         Area of Responsibility *
                       </Text>
                       <SearchableLocationSelect
@@ -440,6 +551,84 @@ const RegisterScreen = () => {
                       </Text>
                     </View>
                   </>
+                )}
+
+                {requiresRegistrationDocuments && (
+                  <View className="mb-4">
+                    <Text className="text-sm font-medium text-waterbase-700 mb-2">
+                      Required Documents *
+                    </Text>
+                    <Text className="text-xs text-waterbase-500 mb-3">
+                      Upload all role-based documents. Accepted formats: PDF, JPG, JPEG, PNG. Max size: 10MB each.
+                    </Text>
+
+                    <View className="space-y-3">
+                      {getRoleDocuments(formData.role).map((document) => {
+                        const file = documentFiles[document.key];
+                        const isImage = !!file?.mimeType?.startsWith("image/");
+
+                        return (
+                          <View key={document.key} className="border border-waterbase-100 rounded-lg bg-white p-3">
+                            <Text className="text-sm font-semibold text-waterbase-950">
+                              {document.name}
+                            </Text>
+                            <Text className="text-xs text-waterbase-600 mt-1 mb-3">
+                              {document.description}
+                            </Text>
+
+                            {file ? (
+                              <View className="flex-row items-center bg-waterbase-50 rounded-lg p-2 mb-3">
+                                {isImage ? (
+                                  <Image source={{ uri: file.uri }} className="w-12 h-12 rounded-md mr-3" resizeMode="cover" />
+                                ) : (
+                                  <View className="w-12 h-12 rounded-md mr-3 bg-white border border-waterbase-100 items-center justify-center">
+                                    <Ionicons name="document-text" size={24} color="#0ea5e9" />
+                                  </View>
+                                )}
+                                <View className="flex-1">
+                                  <Text className="text-sm text-waterbase-900" numberOfLines={1}>
+                                    {file.name}
+                                  </Text>
+                                  {file.size ? (
+                                    <Text className="text-xs text-waterbase-600">
+                                      {(file.size / (1024 * 1024)).toFixed(2)} MB
+                                    </Text>
+                                  ) : null}
+                                </View>
+                              </View>
+                            ) : null}
+
+                            {documentErrors[document.key] ? (
+                              <Text className="text-xs text-red-600 mb-2">{documentErrors[document.key]}</Text>
+                            ) : null}
+
+                            <View className="flex-row space-x-2">
+                              <TouchableOpacity
+                                onPress={() => pickRegistrationDocument(document.key)}
+                                disabled={isLoading}
+                                className="flex-1 border border-gray-300 rounded-lg px-3 py-3 bg-white flex-row items-center justify-center"
+                              >
+                                <Ionicons name={file ? "refresh" : "attach"} size={18} color="#6B7280" />
+                                <Text className="ml-2 text-sm text-waterbase-900">
+                                  {file ? "Replace" : "Upload"}
+                                </Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={() => setSelectedTemplateDocument(document)}
+                                disabled={isLoading}
+                                className="flex-1 border border-waterbase-200 rounded-lg px-3 py-3 bg-waterbase-50 flex-row items-center justify-center"
+                              >
+                                <Ionicons name="eye" size={18} color="#0ea5e9" />
+                                <Text className="ml-2 text-sm text-waterbase-700">
+                                  View Template
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
                 )}
               </View>
 
@@ -469,7 +658,7 @@ const RegisterScreen = () => {
               {/* Submit Button */}
               <TouchableOpacity
                 onPress={handleSubmit}
-                disabled={isLoading}
+                disabled={isLoading || (requiresRegistrationDocuments && getRoleDocuments(formData.role).some((document) => !documentFiles[document.key] || documentErrors[document.key]))}
                 className="w-full rounded-lg mb-4"
               >
                 <LinearGradient
@@ -507,6 +696,48 @@ const RegisterScreen = () => {
           </Card>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={!!selectedTemplateDocument}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSelectedTemplateDocument(null)}
+      >
+        <View className="flex-1 bg-black/40 justify-end">
+          <View className="bg-white rounded-t-2xl p-5">
+            <View className="flex-row items-start justify-between mb-4">
+              <View className="flex-1 mr-3">
+                <Text className="text-lg font-semibold text-waterbase-950">
+                  {selectedTemplateDocument?.name}
+                </Text>
+                <Text className="text-sm text-waterbase-600 mt-1">
+                  Sample document template for this role and document type.
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setSelectedTemplateDocument(null)}>
+                <Ionicons name="close" size={24} color="#334155" />
+              </TouchableOpacity>
+            </View>
+
+            <View className="border border-dashed border-waterbase-200 rounded-xl bg-waterbase-50 h-64 items-center justify-center px-4">
+              {getImageUrl(getTemplatePath(formData.role, selectedTemplateDocument?.key)) ? (
+                <Image
+                  source={{ uri: getImageUrl(getTemplatePath(formData.role, selectedTemplateDocument?.key)) || undefined }}
+                  className="w-full h-full rounded-lg"
+                  resizeMode="contain"
+                />
+              ) : (
+                <>
+                  <Ionicons name="document-text-outline" size={72} color="#0ea5e9" />
+                  <Text className="text-waterbase-900 font-semibold mt-3">
+                    Template preview unavailable
+                  </Text>
+                </>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
